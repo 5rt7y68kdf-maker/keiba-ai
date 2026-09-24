@@ -205,38 +205,69 @@ def fetch_race_list_by_date(dt_str):
     if len(clean_date) != 8:
         return [], "日付は8桁の数字(YYYYMMDD)で指定してください。"
 
-    races = []
-    db_url = f"https://db.netkeiba.com/race/list/{clean_date}/"
-    soup, _ = fetch_html(db_url)
-    if soup:
+    found_ids = set()
+    race_names_map = {}
+
+    urls = [
+        f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}",
+        f"https://db.netkeiba.com/race/list/{clean_date}/"
+    ]
+
+    for url in urls:
+        soup, _ = fetch_html(url)
+        if not soup: continue
         for a in soup.find_all('a'):
             href = a.get('href', '')
-            m = re.search(r'/race/(\d{12})', href)
+            m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
             if m:
                 r_id = m.group(1)
-                txt = a.text.strip().replace('\n', ' ')
+                found_ids.add(r_id)
+                txt = a.text.strip().replace('
+', ' ')
                 txt = re.sub(r'\s+', ' ', txt)
-                if txt and not any(r['id'] == r_id for r in races):
-                    races.append({'id': r_id, 'name': txt})
+                txt = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', txt).strip()
+                txt = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ)', '', txt).strip()
+                if txt and len(txt) >= 2:
+                    race_names_map[r_id] = txt
 
-    if not races:
-        race_url = f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}"
-        soup, _ = fetch_html(race_url)
-        if soup:
-            for a in soup.find_all('a'):
-                href = a.get('href', '')
-                m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
-                if m:
-                    r_id = m.group(1)
-                    txt = a.text.strip().replace('\n', ' ')
-                    txt = re.sub(r'\s+', ' ', txt)
-                    if txt and not any(r['id'] == r_id for r in races):
-                        races.append({'id': r_id, 'name': txt})
+    if not found_ids:
+        return [], f"指定された日付 ({clean_date}) の中央競馬(JRA)レースデータは見つかりませんでした。"
 
-    if not races:
-        return [], f"指定された日付 ({clean_date}) のレースデータは見つかりませんでした。"
+    venue_names = {
+        '01': '札幌', '02': '函館', '03': '福島', '04': '新潟',
+        '05': '東京', '06': '中山', '07': '中京', '08': '京都',
+        '09': '阪神', '10': '小倉'
+    }
 
-    return races, None
+    prefixes = {}
+    for r_id in found_ids:
+        if len(r_id) == 12:
+            v_code = r_id[4:6]
+            if v_code in venue_names:
+                prefix = r_id[:10]
+                prefixes[prefix] = (v_code, venue_names[v_code])
+
+    if not prefixes:
+        return [], f"指定された日付 ({clean_date}) に開催されるJRA（中央競馬）のレースが見つかりませんでした。"
+
+    all_races = []
+    for prefix, (v_code, v_name) in sorted(prefixes.items()):
+        for r_num in range(1, 13):
+            full_id = f"{prefix}{r_num:02d}"
+            r_title = race_names_map.get(full_id, "")
+            if r_title:
+                disp_name = f"📍【{v_name}】 {r_num}R {r_title}"
+            else:
+                disp_name = f"📍【{v_name}】 {r_num}R"
+            
+            all_races.append({
+                'id': full_id,
+                'name': disp_name,
+                'venue': v_name,
+                'r_num': r_num
+            })
+
+    return all_races, None
 
 def parse_db_netkeiba(soup):
     table = soup.select_one('table.race_table_01')
@@ -401,11 +432,11 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list[0].text.strip()
+            txt = td_list.text.strip()
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list[1].text.strip()
+            txt = td_list.text.strip()
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -433,7 +464,7 @@ def fetch_odds_data(clean_id):
         for r in rows:
             tds = r.find_all(['td', 'th'])
             if len(tds) >= 4:
-                uma_txt = tds[1].text.strip() if len(tds) > 1 else tds[0].text.strip()
+                uma_txt = tds.text.strip() if len(tds) > 1 else ''
                 odds_txt = tds[-2].text.strip() if len(tds) > 2 else ''
                 pop_txt = tds[-1].text.strip() if len(tds) > 3 else ''
                 
