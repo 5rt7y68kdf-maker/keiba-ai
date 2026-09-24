@@ -19,7 +19,7 @@ JRA_VENUES = {
 VENUE_MAP = JRA_VENUES
 VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
-ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3连単"]
+ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
 TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
 TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
@@ -85,7 +85,7 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    /* 予想馬カード */
+    /* 予想馬カード (コンパクト＆高コントラスト) */
     .horse-card {
         background: #ffffff;
         border-radius: 16px;
@@ -93,7 +93,6 @@ st.markdown("""
         border: 1px solid #cbd5e1;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
         margin-bottom: 14px;
-        height: auto !important;
         word-break: break-word !important;
         white-space: normal !important;
         overflow: visible !important;
@@ -105,6 +104,27 @@ st.markdown("""
     .badge-honmei { background: #dc2626; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; }
     .badge-taikou { background: #059669; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; }
     .badge-tanana { background: #2563eb; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; }
+
+    /* オッズ＆人気の強調タグ */
+    .odds-badge {
+        background: #1e3a8a;
+        color: #ffffff;
+        font-weight: 800;
+        font-size: 1.15rem;
+        padding: 4px 10px;
+        border-radius: 8px;
+        display: inline-block;
+    }
+    .pop-badge {
+        background: #f59e0b;
+        color: #ffffff;
+        font-weight: 800;
+        font-size: 0.95rem;
+        padding: 4px 8px;
+        border-radius: 8px;
+        display: inline-block;
+        margin-left: 6px;
+    }
 
     /* 買い目・指標カード */
     .bet-card {
@@ -151,6 +171,17 @@ st.markdown("""
         border: 1px solid #10b981;
         box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
         margin-bottom: 15px;
+    }
+    .reason-box {
+        background: #ffffff;
+        border-left: 5px solid #2563eb;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin-bottom: 12px;
+        border-top: 1px solid #e2e8f0;
+        border-right: 1px solid #e2e8f0;
+        border-bottom: 1px solid #e2e8f0;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.02);
     }
     .metric-container {
         background: #ffffff;
@@ -480,11 +511,11 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list[0].text.strip()
+            txt = td_list.text.strip()
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list[1].text.strip()
+            txt = td_list.text.strip()
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -604,7 +635,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
             if waku in [1, 2, 3]:
                 bias_score = 6.0
                 bias_comment = f"【バイアス好走】内枠{waku}枠有利・前目追走可"
-            elif waku in [4, 5, 6]:
+            elif waku in [4, 5]:
                 bias_score = 3.0
                 bias_comment = "【バイアス中立】中枠可"
             else:
@@ -1005,8 +1036,8 @@ if target_race_id:
                 h_name_disp = f"{honmei['馬番']}番 {honmei['馬名']}" if honmei else "ー"
                 st.markdown(f'<div class="metric-container"><div class="metric-label">AI最有力 本命馬</div><div class="metric-value" style="color:#dc2626; word-break:break-all; white-space:normal; overflow:visible;">{h_name_disp}</div></div>', unsafe_allow_html=True)
             with m4:
-                h_odds_disp = f"{honmei['単勝オッズ']} 倍" if honmei else "ー"
-                st.markdown(f'<div class="metric-container"><div class="metric-label">本命単勝オッズ</div><div class="metric-value" style="color:#2563eb;">{h_odds_disp}</div></div>', unsafe_allow_html=True)
+                h_odds_disp = f"{honmei['単勝オッズ']} 倍 ({honmei['人気']}人気)" if honmei and honmei.get('人気') != '未確定' else f"{honmei['単勝オッズ']} 倍" if honmei else "ー"
+                st.markdown(f'<div class="metric-container"><div class="metric-label">本命単勝オッズ・人気</div><div class="metric-value" style="color:#2563eb;">{h_odds_disp}</div></div>', unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("🔄 最新オッズを手動更新 (netkeibaリアルタイム取得)"):
@@ -1035,7 +1066,7 @@ if target_race_id:
                     st.session_state['paddock_map'] = updated_paddock
                     st.rerun()
 
-            st.markdown("### 🎯 AI選定・上位評価馬（期待値・回収率付き）")
+            st.markdown("### 🎯 AI選定・上位評価馬（オッズ・人気手前表示）")
             top_3 = sorted(data, key=lambda x: x.get('AI予想スコア', 0), reverse=True)[:3]
             
             c_h1, c_h2, c_h3 = st.columns(3)
@@ -1045,10 +1076,19 @@ if target_race_id:
 
             for idx, (horse, col_c) in enumerate(zip(top_3, [c_h1, c_h2, c_h3])):
                 with col_c:
+                    o_txt = f"{horse['単勝オッズ']}倍" if horse['単勝オッズ'] != '未確定' else "未確定"
+                    p_txt = f"{horse['人気']}人気" if horse['人気'] != '未確定' else "人気未確定"
+                    
                     st.markdown(f"""
                     <div class="horse-card {card_styles[idx]}">
-                        <span class="{badges[idx]}">{mark_names[idx]}</span>
-                        <div style="font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 10px 0 6px 0; word-break: break-word; white-space: normal;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span class="{badges[idx]}">{mark_names[idx]}</span>
+                            <div>
+                                <span class="odds-badge">{o_txt}</span>
+                                <span class="pop-badge">{p_txt}</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 8px 0; word-break: break-word; white-space: normal;">
                             {horse['馬番']}番 {horse['馬名']}
                         </div>
                         <p style="color: #2563eb; font-weight: bold; font-size: 1.05rem; margin-bottom: 4px;">
@@ -1058,7 +1098,7 @@ if target_race_id:
                             期待回収率: {horse['期待回収率']} (EV: {horse['期待値(EV)']})
                         </p>
                         <p style="margin: 2px 0; color: #334155; font-size: 0.88rem;">
-                            単勝オッズ: <strong>{horse['単勝オッズ']}倍</strong> ({horse['人気']}人気) | 馬体重: <strong>{horse['馬体重']}</strong>
+                            馬体重: <strong>{horse['馬体重']}</strong> | 斤量: <strong>{horse['斤量']}kg</strong>
                         </p>
                         <p style="margin: 4px 0; color: #047857; font-size: 0.85rem; word-break: break-word; white-space: normal;">
                             <strong>血統適性:</strong> {horse['血統適性']}
@@ -1066,20 +1106,38 @@ if target_race_id:
                         <p style="margin: 4px 0; color: #1e40af; font-size: 0.85rem; word-break: break-word; white-space: normal;">
                             <strong>バイアス展開:</strong> {horse['バイアス展開']}
                         </p>
-                        <hr style="border-color: #cbd5e1; margin: 8px 0;">
-                        <p style="font-size: 0.88rem; color: #475569; line-height: 1.5; word-break: break-word; white-space: normal;">
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            # ---------------------------------------------------------
+            # 💡 AI予想根拠・詳細解説 (別枠に読みやすく独立表示)
+            # ---------------------------------------------------------
+            st.markdown("---")
+            with st.expander("💡 上位評価馬のAI予想根拠・詳細分析（クリックで全表示/収納）", expanded=True):
+                for horse in top_3:
+                    o_val_disp = f"{horse['単勝オッズ']}倍" if horse['単勝オッズ'] != '未確定' else "未確定"
+                    p_val_disp = f"{horse['人気']}人気" if horse['人気'] != '未確定' else "人気未確定"
+                    st.markdown(f"""
+                    <div class="reason-box">
+                        <div style="font-size: 1.1rem; font-weight: 800; color: #1e3a8a;">
+                            {horse['予想印']} {horse['馬番']}番 {horse['馬名']}
+                            <span style="font-size: 0.95rem; color: #059669; font-weight: bold; margin-left: 10px;">
+                                [ 単勝 {o_val_disp} / {p_val_disp} / AIスコア: {horse['AI予想スコア']}pt ]
+                            </span>
+                        </div>
+                        <p style="margin-top: 8px; color: #1e293b; font-size: 0.95rem; line-height: 1.6; word-break: break-word;">
                             {horse['予想根拠']}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 📋 AI予想・詳細分析一覧
+            # 📋 AI予想・詳細分析一覧表 (人気とオッズを手前に配置)
             # ---------------------------------------------------------
             st.markdown("---")
-            st.markdown("### 📋 AI予想・詳細分析一覧")
+            st.markdown("### 📋 AI予想・全出走馬データ一覧表")
             
-            cols = ['予想印', '枠番', '馬番', '馬名', 'AI予想スコア', 'AI想定勝率', '期待値(EV)', '期待回収率', '騎手', '血統適性', 'バイアス展開', '単勝オッズ', '人気', '馬体重', 'パドック評価', '予想根拠']
+            cols = ['予想印', '枠番', '馬番', '馬名', '単勝オッズ', '人気', 'AI予想スコア', 'AI想定勝率', '期待値(EV)', '期待回収率', '騎手', '血統適性', 'バイアス展開', '馬体重', 'パドック評価', '予想根拠']
             df_display = df[[c for c in cols if c in df.columns]]
 
             def highlight_row(val):
@@ -1094,6 +1152,8 @@ if target_race_id:
                 "枠番": st.column_config.NumberColumn("枠", width="small"),
                 "馬番": st.column_config.NumberColumn("馬番", width="small"),
                 "馬名": st.column_config.TextColumn("馬名", width="medium"),
+                "単勝オッズ": st.column_config.TextColumn("オッズ", width="small"),
+                "人気": st.column_config.TextColumn("人気", width="small"),
                 "AI予想スコア": st.column_config.NumberColumn("スコア", width="small", format="%.1f"),
                 "AI想定勝率": st.column_config.TextColumn("勝率", width="small"),
                 "期待値(EV)": st.column_config.TextColumn("EV", width="small"),
@@ -1101,8 +1161,6 @@ if target_race_id:
                 "騎手": st.column_config.TextColumn("騎手", width="medium"),
                 "血統適性": st.column_config.TextColumn("血統適性", width="large"),
                 "バイアス展開": st.column_config.TextColumn("バイアス展開", width="large"),
-                "単勝オッズ": st.column_config.TextColumn("オッズ", width="small"),
-                "人気": st.column_config.TextColumn("人気", width="small"),
                 "馬体重": st.column_config.TextColumn("馬体重", width="small"),
                 "パドック評価": st.column_config.TextColumn("パドック", width="medium"),
                 "予想根拠": st.column_config.TextColumn("予想根拠", width="large")
