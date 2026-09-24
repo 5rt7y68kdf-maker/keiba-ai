@@ -21,9 +21,6 @@ VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
 ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
-TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
-TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
-
 # ---------------------------------------------------------
 # Streamlit Page Config & Compact High-Contrast Styling
 # ---------------------------------------------------------
@@ -575,19 +572,22 @@ def fetch_odds_data(clean_id):
     return odds_map
 
 # ---------------------------------------------------------
-# AI Score Engine
+# AI Score Engine (血統・脚質・馬場適性メイン / 人気・騎手を除外)
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_style_overrides=None):
     if not data_list: return data_list
     if paddock_status_map is None: paddock_status_map = {}
     if leg_style_overrides is None: leg_style_overrides = {}
     if race_env is None:
-        race_env = {'weather': '晴', 'condition': '良', 'bias': '⚪ フラット', 'pace': 'ミドルペース'}
+        race_env = {
+            'weather': '晴',
+            'condition': '良',
+            'bias': '⚪ フラット',
+            'pace': 'ミドルペース'
+        }
 
     scored_items = []
     for d in data_list:
-        odds = d.get('単勝オッズ')
-        pop = d.get('人気')
         weight = d.get('斤量', 55.0)
         hw_diff = d.get('体重増減', 0)
         uma = d.get('馬番')
@@ -597,101 +597,119 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         
         leg_style = leg_style_overrides.get(uma, d.get('脚質', '先行'))
 
-        try: o_val = float(odds)
-        except (ValueError, TypeError): o_val = 20.0
-
-        try: p_val = float(pop)
-        except (ValueError, TypeError): p_val = 8.0
-
-        pop_score = max(0, 40 - (p_val - 1) * 3.5)
-        odds_score = max(0, 30 - (o_val * 0.6))
-        weight_bonus = max(0, (56.0 - weight) * 2)
-
-        j_score = 0.0
-        j_comment = "騎手標準"
-        if any(tj in jockey for tj in TOP_JOCKEYS_S):
-            j_score = 7.0
-            j_comment = f"【トップ騎手】{jockey}"
-        elif any(tj in jockey for tj in TOP_JOCKEYS_A):
-            j_score = 4.0
-            j_comment = f"【有力騎手】{jockey}"
-        else:
-            j_score = 1.0
-            j_comment = f"【鞍上】{jockey}"
-
-        blood_score = 3.0
-        blood_comment = "血統適性標準"
+        # --------------------------------------------------
+        # 1. 血統適性スコア (メインファクター①: 最大 30pt)
+        # --------------------------------------------------
+        blood_score = 15.0
+        blood_comment = "血統標準"
         if race_env['condition'] in ['重', '不良', '稍重']:
-            if any(kw in horse_name for kw in ["キング", "ゴールド", "ダノン", "ボルド", "パワー", "ロック", "ロベルト"]):
-                blood_score = 6.0
-                blood_comment = f"【血統高適性】パワー型血統 ({race_env['condition']}馬場順応)"
+            if any(kw in horse_name for kw in ["キング", "ゴールド", "ダノン", "ボルド", "パワー", "ロック", "ブリン", "ロベルト", "オルフェ", "キズナ", "ルーラー"]):
+                blood_score = 28.0
+                blood_comment = f"【血統特注】道悪・{race_env['condition']}適性抜群のパワー血統"
             else:
-                blood_score = 4.0
-                blood_comment = f"【血統適性】{race_env['condition']}適性あり"
+                blood_score = 20.0
+                blood_comment = f"【血統適合】{race_env['condition']}馬場順応血統"
         else:
-            blood_score = 5.0
-            blood_comment = "【血統高適性】良馬場スピード血統"
+            if any(kw in horse_name for kw in ["ディープ", "ハーツ", "ロード", "ドゥラ", "エピファ", "モーリス", "シルク", "リアル"]):
+                blood_score = 28.0
+                blood_comment = "【血統特注】良馬場高速馬場スピード血統"
+            else:
+                blood_score = 22.0
+                blood_comment = "【血統適合】標準良馬場スピード血統"
 
-        pace_score = 0.0
+        # --------------------------------------------------
+        # 2. 脚質・展開適合スコア (メインファクター②: 最大 35pt)
+        # --------------------------------------------------
+        pace_score = 20.0
         pace_comment = f"【脚質: {leg_style}】"
 
         if race_env['pace'] == 'スローペース（前残り）':
             if leg_style in ['逃げ', '先行']:
-                pace_score = 7.0
-                pace_comment += " スロー展開で前残り好機！"
+                pace_score = 33.0
+                pace_comment += " スロー展開絶好！前残り圧倒的有利"
             elif leg_style == '差し':
-                pace_score = 2.0
-                pace_comment += " スローで展開微妙"
+                pace_score = 15.0
+                pace_comment += " スロー展開で前を捕らえきれるか微妙"
             else:
-                pace_score = -2.0
-                pace_comment += " スローで後方待機苦戦"
+                pace_score = 8.0
+                pace_comment += " スロー展開で後方待機極めて厳しい"
         elif race_env['pace'] == 'ハイペース（差し有利）':
             if leg_style in ['差し', '追込']:
-                pace_score = 7.0
-                pace_comment += " ハイペース消耗戦で差し好機！"
+                pace_score = 33.0
+                pace_comment += " ハイペース消耗戦で差し・追い込み絶好好機！"
             elif leg_style == '先行':
-                pace_score = 2.0
-                pace_comment += " 前半競り合い消耗注意"
+                pace_score = 15.0
+                pace_comment += " 前半競り合い消耗懸念"
             else:
-                pace_score = -3.0
-                pace_comment += " ハイペースで目標にされ厳しい"
-        else:
-            pace_score = 4.0
-            pace_comment += " 平均ペース順当展開"
+                pace_score = 8.0
+                pace_comment += " 逃げ潰れ危険大"
+        else: # ミドルペース
+            if leg_style in ['先行', '差し']:
+                pace_score = 30.0
+                pace_comment += " ミドルペース順当展開・自在性活きる"
+            else:
+                pace_score = 22.0
+                pace_comment += " ミドルペース標準展開"
 
-        bias_score = 0.0
+        # --------------------------------------------------
+        # 3. 馬場適性・トラックバイアス (メインファクター③: 最大 25pt)
+        # --------------------------------------------------
+        bias_score = 15.0
         bias_comment = "馬場フラット"
         if "内伸び" in race_env['bias']:
             if waku in [1, 2, 3] and leg_style in ['逃げ', '先行']:
-                bias_score = 6.0
-                bias_comment = f"【バイアス絶好】内枠{waku}枠＋{leg_style}"
-            elif waku in [1, 2, 3, 4]:
-                bias_score = 3.0
-                bias_comment = "【バイアス中立】"
+                bias_score = 25.0
+                bias_comment = f"【馬場バイアス絶好】内枠{waku}枠＋{leg_style}で絶好イン狙い"
+            elif waku in [1, 2, 3, 4, 5]:
+                bias_score = 18.0
+                bias_comment = f"【馬場バイアス良好】内～中枠{waku}枠"
             else:
-                bias_score = -2.0
-                bias_comment = "【バイアス懸念】外枠位置取り懸念"
+                bias_score = 8.0
+                bias_comment = "【馬場バイアス懸念】外枠位置取りロス警戒"
         elif "外伸び" in race_env['bias']:
-            if leg_style in ['差し', '追込']:
-                bias_score = 6.0
-                bias_comment = f"【バイアス適合】外伸び馬場で{leg_style}活きる"
+            if leg_style in ['差し', '追込'] or waku in [6, 7, 8]:
+                bias_score = 25.0
+                bias_comment = f"【馬場バイアス絶好】外伸び馬場で{leg_style}・外枠活きる"
             else:
-                bias_score = 1.0
-                bias_comment = "【バイアス標準】"
+                bias_score = 15.0
+                bias_comment = "【馬場バイアス標準】"
         else:
-            bias_score = 2.0
+            bias_score = 18.0
 
-        hw_comment = "馬体重良好" if abs(hw_diff) <= 4 else ("太め残り警戒" if hw_diff >= 10 else ("大幅減警戒" if hw_diff <= -10 else "馬体重許容範囲"))
+        # --------------------------------------------------
+        # 4. 馬体コンディション・パドック・斤量 (補助ファクター)
+        # --------------------------------------------------
+        if abs(hw_diff) <= 4:
+            hw_score = 5.0
+            hw_comment = "仕上がり良好"
+        elif hw_diff >= 10:
+            hw_score = -4.0
+            hw_comment = "太め残り警戒"
+        elif hw_diff <= -10:
+            hw_score = -5.0
+            hw_comment = "大幅減警戒"
+        else:
+            hw_score = 0.0
+            hw_comment = "許容範囲"
+
+        weight_bonus = max(-3.0, min(5.0, (56.0 - weight) * 2.0))
 
         p_status = paddock_status_map.get(uma, "⚪ 普通 (0pt)")
-        paddock_score = 7.0 if "絶好調" in p_status else (-4.0 if "太め残り" in p_status else (-5.0 if "テンション高" in p_status else 0.0))
+        if "絶好調" in p_status:
+            paddock_score = 7.0
+        elif "太め残り" in p_status:
+            paddock_score = -4.0
+        elif "テンション高" in p_status:
+            paddock_score = -5.0
+        else:
+            paddock_score = 0.0
 
-        raw_score = pop_score + odds_score + weight_bonus + j_score + blood_score + bias_score + pace_score + paddock_score + 5
+        # ※ 人気 (pop) および 騎手 (jockey) は指数計算から完全に排除
+        raw_score = blood_score + pace_score + bias_score + hw_score + weight_bonus + paddock_score
         score = round(min(99.9, max(10.0, raw_score)), 1)
 
         win_prob = round(max(1.0, score / 3.5), 1)
-        ev_val = round((win_prob / 100.0) * o_val, 2)
-        rec_rate = int(ev_val * 100)
+        rec_rate = int(score * 1.5)
 
         d_copy = dict(d)
         d_copy['脚質'] = leg_style
@@ -699,13 +717,11 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         d_copy['_raw_score'] = score
         d_copy['AI予想スコア'] = score
         d_copy['AI想定勝率'] = f"{win_prob}%"
-        d_copy['期待値(EV)'] = f"{ev_val}"
         d_copy['期待回収率'] = f"{rec_rate}%"
         d_copy['パドック評価'] = p_status
-        d_copy['騎手評価'] = j_comment
         d_copy['血統適性'] = blood_comment
         d_copy['バイアス展開'] = f"{pace_comment} / {bias_comment}"
-        d_copy['_p_comment'] = f"{hw_comment} | {j_comment} | {blood_comment} | {pace_comment}"
+        d_copy['_p_comment'] = f"{hw_comment} | {blood_comment} | {pace_comment} | {bias_comment}"
         scored_items.append(d_copy)
 
     scored_items.sort(key=lambda x: x['_raw_score'], reverse=True)
@@ -714,23 +730,23 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
     for idx, item in enumerate(scored_items):
         mark = mark_list[idx] if idx < len(mark_list) else 'ー'
         item['予想印'] = mark
+        item['AI予想スコア'] = item['_raw_score']
         
         o_str = f"{item['単勝オッズ']}倍" if item['単勝オッズ'] != "未確定" else "オッズ未確定"
-        p_str = f"{item['人気']}人気" if item['人気'] != "未確定" else ""
         p_info = item.get('_p_comment', '')
 
         if idx == 0:
-            item['予想根拠'] = f"【絶好の軸馬】単勝{o_str}（{p_str}）。AI総合指数最高値({item['_raw_score']}pt / EV: {item['期待値(EV)']} / 回収率 {item['期待回収率']})。{p_info}。"
+            item['予想根拠'] = f"【絶好の軸馬】血統・脚質・馬場適性の総合評価トップ({item['_raw_score']}pt / 単勝{o_str})。{p_info}。"
         elif idx == 1:
-            item['予想根拠'] = f"【対抗馬】単勝{o_str}（{p_str}）。{p_info}。本命馬に迫るハイレベル評価値。"
+            item['予想根拠'] = f"【対抗馬】血統・展開の適合度高く本命に迫る評価値({item['_raw_score']}pt)。{p_info}。"
         elif idx == 2:
-            item['予想根拠'] = f"【単穴一発】単勝{o_str}（{p_str}）。{p_info}。展開次第で頭まで突き抜ける爆発力。"
+            item['予想根拠'] = f"【単穴一発】適性・展開が噛み合えば頭まで狙える注目馬({item['_raw_score']}pt)。{p_info}。"
         elif idx == 3 or idx == 4:
-            item['予想根拠'] = f"【連下候補】単勝{o_str}。{p_info}。ヒモ枠として押さえ必須。"
+            item['予想根拠'] = f"【連下候補】馬場・コース適性に勝機。ヒモ押さえ推奨。{p_info}。"
         elif idx == 5:
-            item['予想根拠'] = f"【穴馬特注】単勝{o_str}（{p_str}）。{p_info}。高配当をもたらすキーマン。"
+            item['予想根拠'] = f"【穴馬特注】血統・展開バイアス適合で爆発力あり。{p_info}。"
         else:
-            item['予想根拠'] = f"静観評価（スコア {item['_raw_score']}pt / {p_info}）"
+            item['予想根拠'] = f"静観評価（AIスコア {item['_raw_score']}pt / {p_info}）"
 
         del item['_raw_score']
         del item['_p_comment']
@@ -739,7 +755,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
     return scored_items
 
 # ---------------------------------------------------------
-# Betting Strategy Generator
+# Betting Recommendation Strategy
 # ---------------------------------------------------------
 def generate_betting_recommendations(data_list, strategy_mode="⚖️ バランス重視（王道）", selected_ticket_types=None):
     honmei = next((d for d in data_list if '◎' in d.get('予想印', '')), None)
@@ -902,7 +918,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
 st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🏇 Kuina AI Racing Pro</div>
-    <div class="hero-sub">JRA中央競馬専用・過去脚質データ対応 AI分析システム</div>
+    <div class="hero-sub">JRA中央競馬専用・血統＆脚質＆馬場適性メイン AI分析システム</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -956,7 +972,7 @@ if target_race_id:
 
     current_race_env = {'weather': sel_weather, 'condition': sel_condition, 'bias': sel_bias, 'pace': sel_pace}
 
-    with st.spinner("🤖 AI多角分析実行中..."):
+    with st.spinner("🤖 AI多角分析実行中（血統・脚質・馬場適性統合中）..."):
         data, error = get_race_data(target_race_id, st.session_state['paddock_map'], current_race_env, leg_style_overrides=st.session_state['leg_style_map'])
 
         if error:
@@ -1001,7 +1017,7 @@ if target_race_id:
             # ---------------------------------------------------------
             # 🎯 2. AI選定・上位評価馬
             # ---------------------------------------------------------
-            st.markdown("##### 🎯 AI選定・上位評価馬")
+            st.markdown("##### 🎯 AI選定・上位評価馬 (血統・脚質・馬場適性重視)")
             top_3 = sorted(data, key=lambda x: x.get('AI予想スコア', 0), reverse=True)[:3]
             
             c_h1, c_h2, c_h3 = st.columns(3)
@@ -1025,13 +1041,19 @@ if target_race_id:
                             単勝オッズ: <strong>{o_txt}</strong> ({p_txt})
                         </p>
                         <p style="color: #2563eb; font-weight: bold; font-size: 0.95rem; margin-bottom: 3px;">
-                            AIスコア: {horse['AI予想スコア']} pt | 騎手: {horse['騎手']}
+                            AI適性スコア: {horse['AI予想スコア']} pt | 騎手: {horse['騎手']}
                         </p>
                         <p style="color: #059669; font-weight: bold; font-size: 0.88rem; margin-bottom: 3px;">
-                            過去脚質: <strong>{horse.get('脚質', '先行')}</strong> | 期待回収率: {horse['期待回収率']} (EV: {horse['期待値(EV)']})
+                            過去脚質: <strong>{horse.get('脚質', '先行')}</strong> | 期待回収率: {horse['期待回収率']}
                         </p>
                         <p style="margin: 2px 0; color: #334155; font-size: 0.85rem;">
-                            馬体重: {horse['馬体重']} | 斤量: {horse['斤量']}kg | 血統: {horse['血統適性']}
+                            馬体重: {horse['馬体重']} | 斤量: {horse['斤量']}kg
+                        </p>
+                        <p style="margin: 3px 0; color: #047857; font-size: 0.83rem;">
+                            <strong>血統適性:</strong> {horse['血統適性']}
+                        </p>
+                        <p style="margin: 3px 0; color: #1e40af; font-size: 0.83rem;">
+                            <strong>バイアス展開:</strong> {horse['バイアス展開']}
                         </p>
                         <hr style="margin: 6px 0 !important;">
                         <p style="font-size: 0.85rem; color: #334155; line-height: 1.4;">
@@ -1045,7 +1067,7 @@ if target_race_id:
             # ---------------------------------------------------------
             st.markdown("##### 📋 AI予想・全出走馬データ一覧表")
             
-            cols = ['予想印', '枠番', '馬番', '馬名', '単勝オッズ', '人気', '脚質', 'AI予想スコア', 'AI想定勝率', '期待値(EV)', '期待回収率', '騎手', '血統適性', 'バイアス展開', '馬体重', 'パドック評価', '予想根拠']
+            cols = ['予想印', '枠番', '馬番', '馬名', '単勝オッズ', '人気', '脚質', 'AI予想スコア', 'AI想定勝率', '期待回収率', '騎手', '血統適性', 'バイアス展開', '馬体重', 'パドック評価', '予想根拠']
             df_display = df[[c for c in cols if c in df.columns]].copy()
             df_display['単勝オッズ'] = df_display['単勝オッズ'].apply(format_odds_val)
 
@@ -1064,9 +1086,8 @@ if target_race_id:
                 "単勝オッズ": st.column_config.TextColumn("単勝オッズ", width="small"),
                 "人気": st.column_config.TextColumn("人気", width="small"),
                 "脚質": st.column_config.TextColumn("過去脚質", width="small"),
-                "AI予想スコア": st.column_config.NumberColumn("スコア", width="small", format="%.1f"),
+                "AI予想スコア": st.column_config.NumberColumn("適性スコア", width="small", format="%.1f"),
                 "AI想定勝率": st.column_config.TextColumn("勝率", width="small"),
-                "期待値(EV)": st.column_config.TextColumn("EV", width="small"),
                 "期待回収率": st.column_config.TextColumn("回収率", width="small"),
                 "騎手": st.column_config.TextColumn("騎手", width="medium"),
                 "血統適性": st.column_config.TextColumn("血統適性", width="large"),
