@@ -230,6 +230,38 @@ def parse_horse_weight_str(txt):
 
     return "計不", 0
 
+def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
+    """通過順・近走位置取りから過去脚質を判定"""
+    if passage_txt:
+        m = re.search(r'(\d{1,2})', str(passage_txt))
+        if m:
+            first_pos = int(m.group(1))
+            if first_pos <= 2:
+                return "逃げ"
+            elif first_pos <= 5:
+                return "先行"
+            elif first_pos <= 10:
+                return "差し"
+            else:
+                return "追込"
+
+    # テキストからの直接キーワード抽出
+    txt = str(passage_txt)
+    if "逃" in txt: return "逃げ"
+    if "先" in txt: return "先行"
+    if "差" in txt: return "差し"
+    if "追" in txt: return "追込"
+
+    # フォールバック（枠番・頭数ベース）
+    if umaban in [1, 2] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
+        return "逃げ"
+    elif umaban in [3, 4, 5, 6]:
+        return "先行"
+    elif umaban in [7, 8, 9, 10, 11, 12]:
+        return "差し"
+    else:
+        return "追込"
+
 # ---------------------------------------------------------
 # Web Scraping & Data Fetching
 # ---------------------------------------------------------
@@ -352,6 +384,7 @@ def parse_db_netkeiba(soup):
         elif '単勝' in h or 'オッズ' in h: col_map['odds'] = idx
         elif '人気' in h: col_map['pop'] = idx
         elif '体重' in h or '馬体重' in h: col_map['horse_weight'] = idx
+        elif '通過' in h or '脚質' in h: col_map['passage'] = idx
 
     rows = table.find_all('tr')[1:]
     data_list = []
@@ -414,6 +447,13 @@ def parse_db_netkeiba(soup):
             m = re.search(r'(\d+)', txt)
             if m: pop_val = int(m.group(1))
 
+        passage_txt = ""
+        pass_idx = col_map.get('passage')
+        if pass_idx is not None and pass_idx < len(tds):
+            passage_txt = tds[pass_idx].text.strip()
+
+        leg_style = infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val)
+
         hw_str = "計不"
         hw_diff = 0
         hw_idx = col_map.get('horse_weight')
@@ -431,6 +471,7 @@ def parse_db_netkeiba(soup):
             '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
             '騎手': jockey_name,
             '斤量': weight_val, '単勝オッズ': odds_val, '人気': pop_val,
+            '脚質': leg_style,
             '馬体重': hw_str, '体重増減': hw_diff
         })
 
@@ -465,6 +506,7 @@ def parse_race_netkeiba(soup):
         weight_val = 55.0
         hw_str = "計不"
         hw_diff = 0
+        passage_txt = ""
 
         for td in td_list:
             classes = [c.lower() for c in td.get('class', [])]
@@ -494,6 +536,9 @@ def parse_race_netkeiba(soup):
                     try: pop_val = int(m_p.group(1))
                     except ValueError: pass
 
+            if 'past' in cls_str or 'result' in cls_str or 'passage' in cls_str:
+                passage_txt += " " + text
+
             if 'weight' in cls_str or 'weight' in (td.get('id') or '').lower() or re.search(r'\d{3,4}\s*\(', text):
                 p_str, p_diff = parse_horse_weight_str(text)
                 if p_str != "計不":
@@ -501,11 +546,11 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list[0].text.strip()
+            txt = td_list[0].text.strip() if len(td_list) > 0 else ""
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list[1].text.strip()
+            txt = td_list[1].text.strip() if len(td_list) > 1 else ""
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -515,11 +560,14 @@ def parse_race_netkeiba(soup):
             continue
         seen_uma.add(umaban)
 
+        leg_style = infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val)
+
         data_list.append({
             '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
             '騎手': jockey_name,
             '斤量': weight_val, '単勝オッズ': odds_val,
             '人気': pop_val,
+            '脚質': leg_style,
             '馬体重': hw_str, '体重増減': hw_diff
         })
 
@@ -562,9 +610,10 @@ def fetch_odds_data(clean_id):
 # ---------------------------------------------------------
 # AI Score Engine
 # ---------------------------------------------------------
-def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
+def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_style_overrides=None):
     if not data_list: return data_list
     if paddock_status_map is None: paddock_status_map = {}
+    if leg_style_overrides is None: leg_style_overrides = {}
     if race_env is None:
         race_env = {
             'weather': '晴',
@@ -583,6 +632,9 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
         waku = d.get('枠番', 1)
         jockey = d.get('騎手', '')
         horse_name = d.get('馬名', '')
+        
+        # 脚質の反映（手動変更・補正優先）
+        leg_style = leg_style_overrides.get(uma, d.get('脚質', '先行'))
 
         try: o_val = float(odds)
         except (ValueError, TypeError): o_val = 20.0
@@ -619,38 +671,56 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
             blood_score = 5.0
             blood_comment = "【血統高適性】良馬場スピード血統"
 
+        # 脚質と展開（ペース・トラックバイアス）の適合ロジック
+        pace_score = 0.0
+        pace_comment = f"【脚質: {leg_style}】"
+
+        if race_env['pace'] == 'スローペース（前残り）':
+            if leg_style in ['逃げ', '先行']:
+                pace_score = 7.0
+                pace_comment += " スロー展開で前残り好機絶大！"
+            elif leg_style == '差し':
+                pace_score = 2.0
+                pace_comment += " スローペースで展開微妙"
+            else:
+                pace_score = -2.0
+                pace_comment += " スロー展開で後方待機苦戦"
+        elif race_env['pace'] == 'ハイペース（差し有利）':
+            if leg_style in ['差し', '追込']:
+                pace_score = 7.0
+                pace_comment += " ハイペース消耗戦で前崩れ一発好機！"
+            elif leg_style == '先行':
+                pace_score = 2.0
+                pace_comment += " 前半競り合い消耗注意"
+            else:
+                pace_score = -3.0
+                pace_comment += " ハイペースで目標にされ厳しい"
+        else:
+            pace_score = 4.0
+            pace_comment += " 平均ペース順当展開"
+
+        # トラックバイアスと脚質の適合
         bias_score = 0.0
         bias_comment = "馬場フラット"
         if "内伸び" in race_env['bias']:
-            if waku in [1, 2, 3]:
+            if waku in [1, 2, 3] and leg_style in ['逃げ', '先行']:
                 bias_score = 6.0
-                bias_comment = f"【バイアス好走】内枠{waku}枠有利・前目追走可"
+                bias_comment = f"【バイアス絶好】内枠{waku}枠＋{leg_style}で経済コース通り粘り込み"
             elif waku in [4, 5]:
                 bias_score = 3.0
-                bias_comment = "【バイアス中立】中枠可"
+                bias_comment = "【バイアス中立】"
             else:
                 bias_score = -2.0
                 bias_comment = "【バイアス懸念】外枠位置取り懸念"
         elif "外伸び" in race_env['bias']:
-            if waku in [6, 7, 8]:
+            if leg_style in ['差し', '追込']:
                 bias_score = 6.0
-                bias_comment = f"【バイアス好走】外枠{waku}枠・伸び脚活きる展開"
+                bias_comment = f"【バイアス高適合】外伸び馬場で{leg_style}の決め手が活きる"
             else:
                 bias_score = 1.0
-                bias_comment = "【バイアス標準】内〜中枠"
+                bias_comment = "【バイアス標準】"
         else:
             bias_score = 2.0
-
-        pattern_score = 4.0
-        pattern_comment = "好走パターン適合"
-        if race_env['pace'] == 'ハイペース（差し有利）':
-            if p_val >= 4 and o_val >= 10.0:
-                pattern_score = 6.0
-                pattern_comment = "【好走パターン】ハイペース消耗戦での差し一発"
-        elif race_env['pace'] == 'スローペース（前残り）':
-            if waku <= 4:
-                pattern_score = 6.0
-                pattern_comment = "【好走パターン】スローマイペース逃げ粘りパターン"
 
         if abs(hw_diff) <= 4:
             hw_comment = "馬体重仕上がり良好"
@@ -671,7 +741,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
         else:
             paddock_score = 0.0
 
-        raw_score = pop_score + odds_score + weight_bonus + j_score + blood_score + bias_score + pattern_score + paddock_score + 5
+        raw_score = pop_score + odds_score + weight_bonus + j_score + blood_score + bias_score + pace_score + paddock_score + 5
         score = round(min(99.9, max(10.0, raw_score)), 1)
 
         win_prob = round(max(1.0, score / 3.5), 1)
@@ -679,6 +749,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
         rec_rate = int(ev_val * 100)
 
         d_copy = dict(d)
+        d_copy['脚質'] = leg_style
         d_copy['_raw_score'] = score
         d_copy['AI予想スコア'] = score
         d_copy['AI想定勝率'] = f"{win_prob}%"
@@ -687,8 +758,8 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
         d_copy['パドック評価'] = p_status
         d_copy['騎手評価'] = j_comment
         d_copy['血統適性'] = blood_comment
-        d_copy['バイアス展開'] = f"{bias_comment} / {pattern_comment}"
-        d_copy['_p_comment'] = f"{hw_comment} | {j_comment} | {blood_comment} | {bias_comment}"
+        d_copy['バイアス展開'] = f"{pace_comment} / {bias_comment}"
+        d_copy['_p_comment'] = f"{hw_comment} | {j_comment} | {blood_comment} | {pace_comment}"
         scored_items.append(d_copy)
 
     scored_items.sort(key=lambda x: x['_raw_score'], reverse=True)
@@ -881,7 +952,7 @@ def calculate_capital_allocation(tickets, total_budget):
 
     return results, synthetic_odds, total_allocated
 
-def get_race_data(input_id, paddock_status_map=None, race_env=None, force_reload=False):
+def get_race_data(input_id, paddock_status_map=None, race_env=None, force_reload=False, leg_style_overrides=None):
     clean_id = extract_race_id_from_input(input_id)
 
     if not clean_id or len(clean_id) != 12:
@@ -922,7 +993,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, force_reload
                     d['単勝オッズ'] = odds_map[uma]['odds']
                     d['人気'] = odds_map[uma]['pop']
 
-    data_list = calculate_ai_scores(data_list, paddock_status_map, race_env)
+    data_list = calculate_ai_scores(data_list, paddock_status_map, race_env, leg_style_overrides)
     return data_list, None
 
 # ---------------------------------------------------------
@@ -931,7 +1002,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, force_reload
 st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🏇 Kuina AI Racing Pro</div>
-    <div class="hero-sub">JRA中央競馬専用・スマートフォン対応 AI分析システム</div>
+    <div class="hero-sub">JRA中央競馬専用・過去脚質データ対応 AI分析システム</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -984,6 +1055,8 @@ if target_race_id:
     
     if 'paddock_map' not in st.session_state:
         st.session_state['paddock_map'] = {}
+    if 'leg_style_map' not in st.session_state:
+        st.session_state['leg_style_map'] = {}
 
     force_reload_flag = st.session_state.get('force_reload_odds', False)
     if force_reload_flag:
@@ -1008,8 +1081,14 @@ if target_race_id:
         'pace': sel_pace
     }
 
-    with st.spinner("🤖 AI多角分析エンジン実行中（血統・騎手・バイアス・展開統合中）..."):
-        data, error = get_race_data(target_race_id, st.session_state['paddock_map'], current_race_env, force_reload=force_reload_flag)
+    with st.spinner("🤖 AI多角分析エンジン実行中（過去脚質・血統・騎手・バイアス統合中）..."):
+        data, error = get_race_data(
+            target_race_id,
+            st.session_state['paddock_map'],
+            current_race_env,
+            force_reload=force_reload_flag,
+            leg_style_overrides=st.session_state['leg_style_map']
+        )
 
         if error:
             st.error(error)
@@ -1035,11 +1114,36 @@ if target_race_id:
                 st.rerun()
 
             # ---------------------------------------------------------
-            # 🏇 1. AI展開予想 ＆ ポジショニング分析
+            # 🏃 各馬の過去脚質データ 調整用Expander
+            # ---------------------------------------------------------
+            with st.expander("🐴 各馬の「過去脚質データ」確認・手動調整（クリックで開く）"):
+                st.caption("過去の走り・通過順からAIが判定した脚質データです。本日ハナを奪う馬など、戦術変更を指定したい場合は選択してください。")
+                leg_cols = st.columns(3)
+                leg_options = ["逃げ", "先行", "差し", "追込"]
+                
+                updated_leg_map = {}
+                for idx, horse in enumerate(data):
+                    col_idx = idx % 3
+                    with leg_cols[col_idx]:
+                        curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
+                        sel_leg = st.selectbox(
+                            f"{horse['馬番']}番 {horse['馬名']} (現状: {curr_leg})",
+                            options=leg_options,
+                            index=leg_options.index(curr_leg) if curr_leg in leg_options else 1,
+                            key=f"leg_{target_race_id}_{horse['馬番']}_{idx}"
+                        )
+                        updated_leg_map[horse['馬番']] = sel_leg
+
+                if st.button("🔄 脚質設定を更新して展開・指数を再計算"):
+                    st.session_state['leg_style_map'] = updated_leg_map
+                    st.rerun()
+
+            # ---------------------------------------------------------
+            # 🏇 1. AI展開予想 ＆ ポジショニング分析 (過去脚質データ反映)
             # ---------------------------------------------------------
             st.markdown("---")
-            st.markdown("### 🏇 AI展開予想 ＆ ポジショニング分析")
-            st.caption("馬番・人気・オッズおよび馬場バイアスから推定した各馬の想定レース展開マップです。")
+            st.markdown("### 🏇 AI展開予想 ＆ ポジショニング分析 (過去脚質データ連動)")
+            st.caption("各馬の過去戦歴・通過順データを基に分類した本レースの想定陣形・隊列マップです。")
 
             nige_list = []
             senko_list = []
@@ -1049,26 +1153,22 @@ if target_race_id:
             for d in data:
                 u_num = d['馬番']
                 u_name = d['馬名']
-                p_num = d.get('人気', 99)
-                w_num = d.get('枠番', 1)
+                leg = d.get('脚質', '先行')
                 label = f"{u_num}番 {u_name}"
 
-                if u_num in [1, 2, 3] or (w_num == 1 and p_num <= 5):
-                    nige_list.append(label)
-                elif u_num in [4, 5, 6, 7] or (w_num in [2, 3] and p_num <= 6):
-                    senko_list.append(label)
-                elif u_num in [8, 9, 10, 11, 12]:
-                    sashi_list.append(label)
-                else:
-                    oikomi_list.append(label)
+                if "逃げ" in leg: nige_list.append(label)
+                elif "先行" in leg: senko_list.append(label)
+                elif "差し" in leg: sashi_list.append(label)
+                elif "追込" in leg: oikomi_list.append(label)
+                else: senko_list.append(label)
 
             pc1, pc2, pc3, pc4 = st.columns(4)
             with pc1:
                 st.markdown(f"""
                 <div class="pace-card">
-                    <span class="pace-title pace-nige">🏃 逃げ (ハナ主張)</span>
+                    <span class="pace-title pace-nige">🏃 逃げ (過去逃げ実績馬)</span>
                     <p style="font-size:0.88rem; color:#1e293b; margin-top:6px; font-weight:600;">
-                        {", ".join(nige_list) if nige_list else "特筆馬なし"}
+                        {", ".join(nige_list) if nige_list else "なし（好位押し切り戦）"}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1076,9 +1176,9 @@ if target_race_id:
             with pc2:
                 st.markdown(f"""
                 <div class="pace-card">
-                    <span class="pace-title pace-senko">🐎 先行 (好位追走)</span>
+                    <span class="pace-title pace-senko">🐎 先行 (過去好位追走馬)</span>
                     <p style="font-size:0.88rem; color:#1e293b; margin-top:6px; font-weight:600;">
-                        {", ".join(senko_list) if senko_list else "特筆馬なし"}
+                        {", ".join(senko_list) if senko_list else "なし"}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1086,9 +1186,9 @@ if target_race_id:
             with pc3:
                 st.markdown(f"""
                 <div class="pace-card">
-                    <span class="pace-title pace-sashi">🏇 差し (中団待機)</span>
+                    <span class="pace-title pace-sashi">🏇 差し (過去中団待機馬)</span>
                     <p style="font-size:0.88rem; color:#1e293b; margin-top:6px; font-weight:600;">
-                        {", ".join(sashi_list) if sashi_list else "特筆馬なし"}
+                        {", ".join(sashi_list) if sashi_list else "なし"}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1096,20 +1196,20 @@ if target_race_id:
             with pc4:
                 st.markdown(f"""
                 <div class="pace-card">
-                    <span class="pace-title pace-oikomi">🐎💨 追込 (後方一気)</span>
+                    <span class="pace-title pace-oikomi">🐎💨 追込 (過去後方一気馬)</span>
                     <p style="font-size:0.88rem; color:#1e293b; margin-top:6px; font-weight:600;">
-                        {", ".join(oikomi_list) if oikomi_list else "特筆馬なし"}
+                        {", ".join(oikomi_list) if oikomi_list else "なし"}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
 
             pace_scenario = f"【{sel_pace} シナリオ】"
             if "スロー" in sel_pace:
-                pace_scenario += "ペースが落ち着き、前目で立ち回る逃げ・先行馬に絶好の展開。後方勢は届かない可能性大。"
+                pace_scenario += f"逃げ馬（{len(nige_list)}頭）先行馬（{len(senko_list)}頭）がマイペースで逃げ粘る絶好の展開。後方待機勢は届かない可能性大。"
             elif "ハイ" in sel_pace:
-                pace_scenario += "前面が激しく競り合いスタミナ勝負。直線で前が崩れ、中団・後方から差し脚を伸ばす馬が台頭。"
+                pace_scenario += f"逃げ・先行馬が多く前半激しいラップに。直線で前が崩れ、差し（{len(sashi_list)}頭）・追込（{len(oikomi_list)}頭）の一発が炸裂。"
             else:
-                pace_scenario += "標準的な流れ。各馬の実力と馬場バイアス（トラックバイアス）が素直に結果へ反映される勝負。"
+                pace_scenario += "標準的な流れ。各馬の過去脚質通りのポジショニングと馬場バイアスが素直に反映されるロジカル勝負。"
 
             st.info(f"💡 **AI展開シナリオ解説**: {pace_scenario}")
 
@@ -1143,7 +1243,7 @@ if target_race_id:
                             AIスコア: {horse['AI予想スコア']} pt | 騎手: {horse['騎手']}
                         </p>
                         <p style="color: #059669; font-weight: bold; font-size: 0.92rem; margin-bottom: 4px;">
-                            期待回収率: {horse['期待回収率']} (EV: {horse['期待値(EV)']})
+                            過去脚質: <strong>{horse.get('脚質', '先行')}</strong> | 期待回収率: {horse['期待回収率']} (EV: {horse['期待値(EV)']})
                         </p>
                         <p style="margin: 2px 0; color: #334155; font-size: 0.88rem;">
                             馬体重: <strong>{horse['馬体重']}</strong> | 斤量: <strong>{horse['斤量']}kg</strong>
@@ -1167,7 +1267,7 @@ if target_race_id:
             st.markdown("---")
             st.markdown("### 📋 AI予想・全出走馬データ一覧表")
             
-            cols = ['予想印', '枠番', '馬番', '馬名', '単勝オッズ', '人気', 'AI予想スコア', 'AI想定勝率', '期待値(EV)', '期待回収率', '騎手', '血統適性', 'バイアス展開', '馬体重', 'パドック評価', '予想根拠']
+            cols = ['予想印', '枠番', '馬番', '馬名', '単勝オッズ', '人気', '脚質', 'AI予想スコア', 'AI想定勝率', '期待値(EV)', '期待回収率', '騎手', '血統適性', 'バイアス展開', '馬体重', 'パドック評価', '予想根拠']
             df_display = df[[c for c in cols if c in df.columns]]
 
             def highlight_row(val):
@@ -1184,6 +1284,7 @@ if target_race_id:
                 "馬名": st.column_config.TextColumn("馬名", width="medium"),
                 "単勝オッズ": st.column_config.TextColumn("単勝オッズ", width="small"),
                 "人気": st.column_config.TextColumn("人気", width="small"),
+                "脚質": st.column_config.TextColumn("過去脚質", width="small"),
                 "AI予想スコア": st.column_config.NumberColumn("スコア", width="small", format="%.1f"),
                 "AI想定勝率": st.column_config.TextColumn("勝率", width="small"),
                 "期待値(EV)": st.column_config.TextColumn("EV", width="small"),
