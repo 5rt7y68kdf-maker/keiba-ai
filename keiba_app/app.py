@@ -21,11 +21,8 @@ VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
 ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
-TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
-TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
-
 # ---------------------------------------------------------
-# Streamlit Page Config & Ultra-Compact Styling
+# Streamlit Page Config & High-Contrast Light Styling
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Kuina AI Racing Pro (JRA中央競馬)",
@@ -36,16 +33,16 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* 全体コンテナの余白削減 */
+    /* 画面上部の余白をしっかり確保してタイトル見切れを完全に防止 */
     .block-container {
-        padding-top: 2.2rem !important;
-        padding-bottom: 0.8rem !important;
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-        max-width: 98% !important;
+        padding-top: 3.6rem !important;
+        padding-bottom: 1.2rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+        max-width: 99% !important;
     }
     div[data-testid="stVerticalBlock"] {
-        gap: 0.35rem !important;
+        gap: 0.4rem !important;
     }
     
     .stApp {
@@ -54,96 +51,98 @@ st.markdown("""
         font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif;
     }
     
-    /* ヒーローヘッダー (コンパクト＆見切れ防止) */
+    /* ヒーローヘッダー (上部に十分なマージンを設けて見切れ防止) */
     .hero-container {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-        border-radius: 8px;
-        padding: 8px 14px;
+        border-radius: 10px;
+        padding: 12px 18px;
         color: #ffffff;
-        margin-top: 2px;
-        margin-bottom: 6px;
-        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.12);
+        margin-top: 8px;
+        margin-bottom: 10px;
+        box-shadow: 0 3px 8px rgba(37, 99, 235, 0.15);
     }
     .hero-title {
-        font-size: 1.45rem;
+        font-size: 1.6rem;
         font-weight: 900;
         color: #ffffff;
         margin: 0;
-        line-height: 1.2;
+        line-height: 1.25;
     }
     .hero-sub {
-        font-size: 0.75rem;
+        font-size: 0.78rem;
         color: #93c5fd;
         font-weight: 700;
-        margin-top: 2px;
+        margin-top: 3px;
     }
 
-    /* ボタン（コンパクト化） */
+    /* ボタン */
     .stButton>button {
         width: 100% !important;
         background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%) !important;
         color: #ffffff !important;
         font-weight: 800 !important;
-        font-size: 0.88rem !important;
+        font-size: 0.9rem !important;
         border-radius: 6px !important;
         border: none !important;
-        padding: 5px 10px !important;
-        box-shadow: 0 1px 4px rgba(37, 99, 235, 0.15) !important;
-        margin-bottom: 2px !important;
+        padding: 6px 12px !important;
+        box-shadow: 0 2px 5px rgba(37, 99, 235, 0.18) !important;
+        margin-bottom: 3px !important;
     }
 
-    /* 枠（カード）と馬番の余白を最小化 */
+    /* 予想カード */
     .horse-card {
         background: #ffffff;
-        border-radius: 8px;
-        padding: 8px 12px !important;
+        border-radius: 10px;
+        padding: 10px 14px !important;
         border: 1px solid #cbd5e1;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
-        margin-bottom: 4px !important;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+        margin-bottom: 6px !important;
         word-break: break-word !important;
         white-space: normal !important;
     }
-    .card-honmei { border-left: 4px solid #dc2626; background: #fff5f5; }
-    .card-taikou { border-left: 4px solid #059669; background: #f0fdf4; }
-    .card-tanana { border-left: 4px solid #2563eb; background: #eff6ff; }
+    .card-honmei { border-left: 5px solid #dc2626; background: #fff5f5; }
+    .card-taikou { border-left: 5px solid #059669; background: #f0fdf4; }
+    .card-tanana { border-left: 5px solid #2563eb; background: #eff6ff; }
 
-    .badge-honmei { background: #dc2626; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; font-size: 0.75rem; }
-    .badge-taikou { background: #059669; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; font-size: 0.75rem; }
-    .badge-tanana { background: #2563eb; color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold; font-size: 0.75rem; }
+    .badge-honmei { background: #dc2626; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 0.78rem; }
+    .badge-taikou { background: #059669; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 0.78rem; }
+    .badge-tanana { background: #2563eb; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 0.78rem; }
 
-    /* 枠番・馬番バッジ表記 */
+    /* 枠番・馬番バッジの左右パディング・マージンを極限まで詰める */
     .waku-badge {
         display: inline-block;
         background: #334155;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 5px;
-        border-radius: 4px;
-        font-size: 0.78rem;
-        margin-right: 3px;
+        padding: 0px 4px !important;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        margin-right: 2px !important;
+        letter-spacing: -0.02em;
     }
     .uma-badge {
         display: inline-block;
         background: #0f172a;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 6px;
-        border-radius: 4px;
-        font-size: 0.85rem;
-        margin-right: 4px;
+        padding: 0px 5px !important;
+        border-radius: 3px;
+        font-size: 0.82rem;
+        margin-right: 3px !important;
+        letter-spacing: -0.02em;
     }
 
-    /* 展開・指標・計算カードの余白削減 */
+    /* 展開・指標・計算カード */
     .pace-card {
         background: #ffffff;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
-        padding: 6px 10px !important;
+        padding: 8px 10px !important;
         margin-bottom: 4px !important;
     }
     .pace-title {
         font-weight: 800;
-        font-size: 0.82rem;
+        font-size: 0.85rem;
         margin-bottom: 2px;
         padding: 1px 5px;
         border-radius: 3px;
@@ -157,27 +156,27 @@ st.markdown("""
     .bet-card, .calc-card, .sim-card {
         background: #ffffff;
         border-radius: 8px;
-        padding: 8px 12px !important;
+        padding: 10px 12px !important;
         border: 1px solid #cbd5e1;
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
         margin-bottom: 4px !important;
     }
     .bet-title {
         font-weight: 700;
-        font-size: 0.88rem;
+        font-size: 0.9rem;
         color: #1e40af;
-        margin-bottom: 2px;
+        margin-bottom: 3px;
     }
     .bet-code {
         font-family: monospace;
-        font-size: 0.88rem;
+        font-size: 0.9rem;
         background: #f1f5f9;
-        padding: 4px 8px;
+        padding: 5px 8px;
         border-radius: 4px;
         color: #0f172a;
         font-weight: bold;
         border: 1px solid #cbd5e1;
-        margin: 2px 0;
+        margin: 3px 0;
         white-space: pre-line;
         word-break: break-all;
     }
@@ -186,27 +185,32 @@ st.markdown("""
         background: #ffffff;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
-        padding: 6px 10px !important;
+        padding: 8px 12px !important;
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
     .metric-label {
-        font-size: 0.72rem;
+        font-size: 0.74rem;
         color: #64748b;
         font-weight: 700;
     }
     .metric-value {
-        font-size: 1.0rem;
+        font-size: 1.05rem;
         font-weight: 800;
         color: #0f172a;
-        margin-top: 0px;
+        margin-top: 1px;
     }
     div[data-testid="stDataFrame"] {
         border-radius: 8px;
         border: 1px solid #cbd5e1;
         background: #ffffff;
     }
+    
+    /* 表（DataFrame）のセル内余白をタイトにして横幅を縮小 */
+    div[data-testid="stDataFrame"] td, div[data-testid="stDataFrame"] th {
+        padding: 4px 6px !important;
+    }
     hr {
-        margin: 0.4rem 0 !important;
+        margin: 0.5rem 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -267,9 +271,9 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
 
     if umaban in [1, 2] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
         return "逃げ"
-    elif umaban in [3, 4, 5, 6]:
+    elif umaban in [3, 4, 5, 6, 7]:
         return "先行"
-    elif umaban in [7, 8, 9, 10, 11, 12]:
+    elif umaban in [8, 9, 10, 11, 12, 13]:
         return "差し"
     else:
         return "追込"
@@ -876,7 +880,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
     return data_list, None
 
 # ---------------------------------------------------------
-# UI Header (コンパクト＆見切れ防止)
+# UI Header (見切れ防止のため十分な上部余白確保)
 # ---------------------------------------------------------
 st.markdown("""
 <div class="hero-container">
@@ -1026,7 +1030,7 @@ if target_race_id:
                     """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 📋 3. AI予想・全出走馬データ一覧表 (枠・馬番の幅と余白カット)
+            # 📋 3. AI予想・全出走馬データ一覧表 (枠・馬番および各種数値カラムの横幅を極限まで詰める)
             # ---------------------------------------------------------
             st.markdown("##### 📋 AI予想・全出走馬データ一覧表")
             
@@ -1041,23 +1045,24 @@ if target_race_id:
                 elif '☆' in str(val): return 'background-color: #fef9c3; color: #854d0e; font-weight: bold;'
                 return ''
 
+            # 横幅(width)をタイトに制御して無駄な余白・横幅をカット
             column_config = {
-                "予想印": st.column_config.TextColumn("印", width="small"),
-                "枠番": st.column_config.NumberColumn("枠", width="small"),
-                "馬番": st.column_config.NumberColumn("馬番", width="small"),
-                "馬名": st.column_config.TextColumn("馬名", width="medium"),
-                "単勝オッズ": st.column_config.TextColumn("単勝オッズ", width="small"),
-                "人気": st.column_config.TextColumn("人気", width="small"),
-                "脚質": st.column_config.TextColumn("過去脚質", width="small"),
-                "AI予想スコア": st.column_config.NumberColumn("適性スコア", width="small", format="%.1f"),
-                "AI想定勝率": st.column_config.TextColumn("勝率", width="small"),
-                "期待回収率": st.column_config.TextColumn("回収率", width="small"),
-                "騎手": st.column_config.TextColumn("騎手", width="medium"),
-                "血統適性": st.column_config.TextColumn("血統適性", width="large"),
-                "バイアス展開": st.column_config.TextColumn("バイアス展開", width="large"),
-                "馬体重": st.column_config.TextColumn("馬体重", width="small"),
-                "パドック評価": st.column_config.TextColumn("パドック", width="medium"),
-                "予想根拠": st.column_config.TextColumn("予想根拠", width="large")
+                "予想印": st.column_config.TextColumn("印", width=55),
+                "枠番": st.column_config.NumberColumn("枠", width=45, format="%d"),
+                "馬番": st.column_config.NumberColumn("馬番", width=50, format="%d"),
+                "馬名": st.column_config.TextColumn("馬名", width=120),
+                "単勝オッズ": st.column_config.TextColumn("オッズ", width=70),
+                "人気": st.column_config.TextColumn("人気", width=55),
+                "脚質": st.column_config.TextColumn("脚質", width=65),
+                "AI予想スコア": st.column_config.NumberColumn("適性pt", width=70, format="%.1f"),
+                "AI想定勝率": st.column_config.TextColumn("勝率", width=65),
+                "期待回収率": st.column_config.TextColumn("回収率", width=70),
+                "騎手": st.column_config.TextColumn("騎手", width=90),
+                "血統適性": st.column_config.TextColumn("血統適性", width=180),
+                "バイアス展開": st.column_config.TextColumn("バイアス展開", width=200),
+                "馬体重": st.column_config.TextColumn("馬体重", width=90),
+                "パドック評価": st.column_config.TextColumn("パドック", width=110),
+                "予想根拠": st.column_config.TextColumn("予想根拠", width=260)
             }
 
             st.dataframe(
