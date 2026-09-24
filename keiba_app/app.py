@@ -253,9 +253,9 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
 
     if umaban in [1, 2, 3] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
         return "逃げ"
-    elif umaban in [4, 5, 6]:
+    elif umaban in [4, 5, 6, 7]:
         return "先行"
-    elif umaban in [7, 8, 9, 10, 11, 12]:
+    elif umaban in [8, 9, 10, 11, 12]:
         return "差し"
     else:
         return "追込"
@@ -701,7 +701,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
             if waku in [1, 2, 3] and leg_style in ['逃げ', '先行']:
                 bias_score = 6.0
                 bias_comment = f"【バイアス絶好】内枠{waku}枠＋{leg_style}で経済コース通り粘り込み"
-            elif waku in [1, 2, 3, 4, 5]:
+            elif waku in [4, 5]:
                 bias_score = 3.0
                 bias_comment = "【バイアス中立】"
             else:
@@ -886,7 +886,7 @@ def generate_betting_recommendations(data_list, strategy_mode="⚖️ バラン�
             "想定オッズ": 18.0
         }
         all_bets["3連単 1頭軸マルチ"] = {
-            "方式": f"3連単 1頭軸マルチ (軸: {h_uma}番)",
+            "方式": f"3连単 1頭軸マルチ (軸: {h_uma}番)",
             "買い目": f"軸: {h_uma} ↔ 相手: {', '.join([str(u) for u in partner_umas[:4]])}",
             "点数": f"{len(partner_umas[:4]) * (len(partner_umas[:4])-1) * 3 if len(partner_umas[:4])>=2 else 6} 点",
             "解説": "本命馬が2着・3着に敗れても取りこぼさない高回収マルチ",
@@ -997,7 +997,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
 st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🏇 Kuina AI Racing Pro</div>
-    <div class="hero-sub">JRA中央競馬専用・過去脚質データ対応 AI分析システム</div>
+    <div class="hero-sub">JRA中央競馬専用・AI予想精度 ＆ 的中率追跡ダッシュボード搭載</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1052,6 +1052,8 @@ if target_race_id:
         st.session_state['paddock_map'] = {}
     if 'leg_style_map' not in st.session_state:
         st.session_state['leg_style_map'] = {}
+    if 'ai_accuracy_history' not in st.session_state:
+        st.session_state['ai_accuracy_history'] = []
 
     st.markdown("### 🌦️ トラックバイアス・天候・展開ペルソナ調整")
     env_c1, env_c2, env_c3, env_c4 = st.columns(4)
@@ -1097,6 +1099,86 @@ if target_race_id:
             with m4:
                 h_odds_disp = f"{honmei['単勝オッズ']} 倍 ({honmei['人気']}人気)" if honmei and honmei.get('人気') != '未確定' else f"{honmei['単勝オッズ']} 倍" if honmei else "ー"
                 st.markdown(f'<div class="metric-container"><div class="metric-label">本命単勝オッズ・人気</div><div class="metric-value" style="color:#2563eb;">{h_odds_disp}</div></div>', unsafe_allow_html=True)
+
+            # ---------------------------------------------------------
+            # 🎯 🎯 📊 AI予想 的中率 ＆ 予想成績追跡ダッシュボード
+            # ---------------------------------------------------------
+            st.markdown("---")
+            st.markdown("### 🎯 AI予想 的中率 ＆ 実績追跡ダッシュボード")
+            
+            with st.expander("📊 AI予想的中率の集計・確定結果の記録（クリックで展開）", expanded=True):
+                st.caption("確定したレース結果（1着〜3着馬番）を入力すると、AIの本命（◎）の勝率・連対率・複勝率や、馬連・3連複の的中結果が自動的に集計・追跡されます。")
+                
+                res_col1, res_col2 = st.columns(2)
+                
+                with res_col1:
+                    st.markdown("##### 🏁 確定レース結果を入力・保存")
+                    first_uma = st.number_input("1着 馬番", min_value=1, max_value=18, value=1, step=1, key=f"res_1_{target_race_id}")
+                    second_uma = st.number_input("2着 馬番", min_value=1, max_value=18, value=2, step=1, key=f"res_2_{target_race_id}")
+                    third_uma = st.number_input("3着 馬番", min_value=1, max_value=18, value=3, step=1, key=f"res_3_{target_race_id}")
+                    
+                    if st.button("📝 レース結果を確定してAI的中率に反映"):
+                        top_evals = {d.get('予想印', ''): d['馬番'] for d in data if '予想印' in d}
+                        h_num = top_evals.get('◎ 本命', None)
+                        
+                        honmei_win = (h_num == first_uma)
+                        honmei_top2 = (h_num in [first_uma, second_uma])
+                        honmei_top3 = (h_num in [first_uma, second_uma, third_uma])
+                        
+                        # 馬連的中判定 (◎◯▲連下)
+                        top_partner_nums = [d['馬番'] for d in data if d.get('予想印') in ['◎ 本命', '◯ 対抗', '▲ 単穴', '△ 連下', '☆ 穴馬']]
+                        umaren_hit = (first_uma in top_partner_nums and second_uma in top_partner_nums)
+                        sanrenpuku_hit = (first_uma in top_partner_nums and second_uma in top_partner_nums and third_uma in top_partner_nums)
+                        
+                        rec = {
+                            "レースID": target_race_id,
+                            "本命馬番": f"{h_num}番",
+                            "確定1着": f"{first_uma}番",
+                            "確定2着": f"{second_uma}番",
+                            "確定3着": f"{third_uma}番",
+                            "◎勝率(1着)": "🎯 1着的中" if honmei_win else "×",
+                            "◎複勝率(3着内)": "🎯 3着内的中" if honmei_top3 else "×",
+                            "馬連/ワイド": "🎯 的中" if umaren_hit else "×",
+                            "3連複/3連単": "🎯 的中" if sanrenpuku_hit else "×"
+                        }
+                        
+                        # 重複登録を防止
+                        st.session_state['ai_accuracy_history'] = [r for r in st.session_state['ai_accuracy_history'] if r['レースID'] != target_race_id]
+                        st.session_state['ai_accuracy_history'].append(rec)
+                        st.success(f"レースID {target_race_id} の結果を保存し、AI的中率データを更新しました！")
+
+                with res_col2:
+                    st.markdown("##### 📈 累計 AI予想的中率サマリー")
+                    
+                    acc_hist = st.session_state['ai_accuracy_history']
+                    if acc_hist:
+                        tot_races = len(acc_hist)
+                        win_cnt = sum(1 for r in acc_hist if "🎯" in r['◎勝率(1着)'])
+                        top3_cnt = sum(1 for r in acc_hist if "🎯" in r['◎複勝率(3着内)'])
+                        umaren_cnt = sum(1 for r in acc_hist if "🎯" in r['馬連/ワイド'])
+                        sanren_cnt = sum(1 for r in acc_hist if "🎯" in r['3連複/3連単'])
+                        
+                        win_rate = round((win_cnt / tot_races) * 100, 1)
+                        top3_rate = round((top3_cnt / tot_races) * 100, 1)
+                        umaren_rate = round((umaren_cnt / tot_races) * 100, 1)
+                        sanren_rate = round((sanren_cnt / tot_races) * 100, 1)
+                        
+                        m_a1, m_a2 = st.columns(2)
+                        m_a1.metric("検証レース数", f"{tot_races} レース")
+                        m_a2.metric("◎ 本命 単勝的中率 (勝率)", f"{win_rate} %")
+                        
+                        m_a3, m_a4 = st.columns(2)
+                        m_a3.metric("◎ 本命 複勝的中率 (3着内率)", f"{top3_rate} %", delta=f"{top3_rate}%")
+                        m_a4.metric("馬連・ワイド 相手的中率", f"{umaren_rate} %")
+                    else:
+                        st.info("確定結果が記録されると、ここにAI本命の【勝率・複勝率・馬券的中率】がリアルタイム集計されます。")
+
+                if st.session_state['ai_accuracy_history']:
+                    st.markdown("##### 📜 追跡履歴一覧")
+                    st.dataframe(pd.DataFrame(st.session_state['ai_accuracy_history']), use_container_width=True)
+                    if st.button("🗑️ AI的中率履歴をクリア"):
+                        st.session_state['ai_accuracy_history'] = []
+                        st.rerun()
 
             # ---------------------------------------------------------
             # 🏇 1. AI展開予想 ＆ ポジショニング分析 (過去脚質データ反映)
