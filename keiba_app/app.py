@@ -501,11 +501,11 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list[0].text.strip() if len(td_list) > 0 else ""
+            txt = td_list[0].text.strip()
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list[1].text.strip() if len(td_list) > 1 else ""
+            txt = td_list[1].text.strip()
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -1034,30 +1034,8 @@ if target_race_id:
                 st.session_state['force_reload_odds'] = True
                 st.rerun()
 
-            with st.expander("🐴 直前パドック気配・状態補正チェック（クリックで展開）"):
-                st.caption("パドックで見た気配を選択すると、AIスコアと推奨買い目がリアルタイムで再判定されます。")
-                p_cols = st.columns(3)
-                p_options = ["⚪ 普通 (0pt)", "✨ 絶好調 (+8pt)", "⚠️ 太め残り (-5pt)", "💥 テンション高 (-6pt)"]
-                
-                updated_paddock = {}
-                for idx, horse in enumerate(data):
-                    col_idx = idx % 3
-                    with p_cols[col_idx]:
-                        default_val = st.session_state['paddock_map'].get(horse['馬番'], "⚪ 普通 (0pt)")
-                        sel_p = st.selectbox(
-                            f"{horse['馬番']}番 {horse['馬名']} ({horse['騎手']} / {horse['馬体重']})",
-                            options=p_options,
-                            index=p_options.index(default_val) if default_val in p_options else 0,
-                            key=f"paddock_{target_race_id}_{horse['馬番']}_{idx}"
-                        )
-                        updated_paddock[horse['馬番']] = sel_p
-
-                if st.button("🔄 パドック気配を反映してAI再スコアリング"):
-                    st.session_state['paddock_map'] = updated_paddock
-                    st.rerun()
-
             # ---------------------------------------------------------
-            # 🏇 AI展開予想 ＆ ポジショニング分析
+            # 🏇 1. AI展開予想 ＆ ポジショニング分析
             # ---------------------------------------------------------
             st.markdown("---")
             st.markdown("### 🏇 AI展開予想 ＆ ポジショニング分析")
@@ -1073,14 +1051,13 @@ if target_race_id:
                 u_name = d['馬名']
                 p_num = d.get('人気', 99)
                 w_num = d.get('枠番', 1)
-                label = f"{u_num} {u_name}"
+                label = f"{u_num}番 {u_name}"
 
-                # 展開分類ロジック
-                if u_num in [1, 2] or (w_num == 1 and p_num <= 5):
+                if u_num in [1, 2, 3] or (w_num == 1 and p_num <= 5):
                     nige_list.append(label)
-                elif u_num in [3, 4, 5, 6] or (w_num in [2, 3] and p_num <= 6):
+                elif u_num in [4, 5, 6, 7] or (w_num in [2, 3] and p_num <= 6):
                     senko_list.append(label)
-                elif u_num in [7, 8, 9, 10, 11, 12]:
+                elif u_num in [8, 9, 10, 11, 12]:
                     sashi_list.append(label)
                 else:
                     oikomi_list.append(label)
@@ -1126,7 +1103,6 @@ if target_race_id:
                 </div>
                 """, unsafe_allow_html=True)
 
-            # シナリオ解説
             pace_scenario = f"【{sel_pace} シナリオ】"
             if "スロー" in sel_pace:
                 pace_scenario += "ペースが落ち着き、前目で立ち回る逃げ・先行馬に絶好の展開。後方勢は届かない可能性大。"
@@ -1138,7 +1114,7 @@ if target_race_id:
             st.info(f"💡 **AI展開シナリオ解説**: {pace_scenario}")
 
             # ---------------------------------------------------------
-            # 🎯 AI選定・上位評価馬 (オッズ・人気手前 ＆ 予想根拠元位置)
+            # 🎯 2. AI選定・上位評価馬 (オッズ・人気手前 ＆ 予想根拠元位置)
             # ---------------------------------------------------------
             st.markdown("---")
             st.markdown("### 🎯 AI選定・上位評価馬")
@@ -1186,7 +1162,7 @@ if target_race_id:
                     """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 📋 AI予想・詳細分析一覧表 (人気とオッズを手前に配置)
+            # 📋 3. AI予想・全出走馬データ一覧表 (上位直下に配置)
             # ---------------------------------------------------------
             st.markdown("---")
             st.markdown("### 📋 AI予想・全出走馬データ一覧表")
@@ -1237,7 +1213,32 @@ if target_race_id:
             )
 
             # ---------------------------------------------------------
-            # 推奨買い目 ＆ シミュレーション
+            # 🐴 4. 直前パドック補正
+            # ---------------------------------------------------------
+            with st.expander("🐴 直前パドック気配・状態補正チェック（クリックで展開）"):
+                st.caption("パドックで見た気配を選択すると、AIスコアと推奨買い目がリアルタイムで再判定されます。")
+                p_cols = st.columns(3)
+                p_options = ["⚪ 普通 (0pt)", "✨ 絶好調 (+8pt)", "⚠️ 太め残り (-5pt)", "💥 テンション高 (-6pt)"]
+                
+                updated_paddock = {}
+                for idx, horse in enumerate(data):
+                    col_idx = idx % 3
+                    with p_cols[col_idx]:
+                        default_val = st.session_state['paddock_map'].get(horse['馬番'], "⚪ 普通 (0pt)")
+                        sel_p = st.selectbox(
+                            f"{horse['馬番']}番 {horse['馬名']} ({horse['騎手']} / {horse['馬体重']})",
+                            options=p_options,
+                            index=p_options.index(default_val) if default_val in p_options else 0,
+                            key=f"paddock_{target_race_id}_{horse['馬番']}_{idx}"
+                        )
+                        updated_paddock[horse['馬番']] = sel_p
+
+                if st.button("🔄 パドック気配を反映してAI再スコアリング"):
+                    st.session_state['paddock_map'] = updated_paddock
+                    st.rerun()
+
+            # ---------------------------------------------------------
+            # 🎫 5. 推奨買い目 ＆ シミュレーション
             # ---------------------------------------------------------
             st.markdown("---")
             st.markdown("### 🎫 競馬AI 推奨戦略＆買い目設定")
@@ -1351,7 +1352,7 @@ if target_race_id:
                     st.info("左側の選択欄からシミュレーションしたい対象の買い目・券種を選択してください。")
 
             # ---------------------------------------------------------
-            # 💰 馬券収支メモ ＆ 損益グラフ機能
+            # 💰 6. 実績 馬券収支メモ ＆ 損益グラフ機能
             # ---------------------------------------------------------
             st.markdown("---")
             st.markdown("### 💰 実績 馬券収支メモ ＆ 損益推移グラフ")
