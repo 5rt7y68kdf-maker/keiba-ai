@@ -19,7 +19,7 @@ JRA_VENUES = {
 VENUE_MAP = JRA_VENUES
 VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
-ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
+ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3连単"]
 
 TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
 TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
@@ -279,7 +279,6 @@ def fetch_race_list_by_date(dt_str):
             r_id = m.group(1)
             v_code = r_id[4:6]
 
-            # JRA (01〜10) のみに厳格限定（地方競馬除外）
             if v_code not in VENUE_CODE_TO_NAME:
                 continue
 
@@ -508,7 +507,8 @@ def parse_race_netkeiba(soup):
 def fetch_odds_data(clean_id):
     odds_url = f"https://race.netkeiba.com/odds/index.html?type=b1&race_id={clean_id}"
     soup, _ = fetch_html(odds_url)
-    if not soup: return {}
+    if not soup:
+        return {}
 
     odds_map = {}
     tables = soup.find_all('table')
@@ -516,26 +516,30 @@ def fetch_odds_data(clean_id):
         rows = table.find_all('tr')
         for r in rows:
             tds = r.find_all(['td', 'th'])
-            if len(tds) >= 4:
-                uma_txt = tds[0].text.strip() if len(tds) > 0 else ''
-                odds_txt = tds[-2].text.strip() if len(tds) > 2 else ''
-                pop_txt = tds[-1].text.strip() if len(tds) > 3 else ''
-                
-                m_uma = re.search(r'(\d+)', uma_txt)
-                m_odds = re.search(r'(\d+\.\d+|\d+)', odds_txt)
-                m_pop = re.search(r'(\d+)', pop_txt)
-                
+            if len(tds) >= 3:
+                cells_txt = [td.text.strip() for td in tds]
+                m_uma = None
+                m_odds = None
+                m_pop = None
+
+                for idx, txt in enumerate(cells_txt):
+                    if not m_uma and re.match(r'^\d{1,2}$', txt) and 1 <= int(txt) <= 18:
+                        m_uma = int(txt)
+                    elif re.match(r'^\d{1,3}\.\d$', txt):
+                        m_odds = float(txt)
+                    elif re.match(r'^\d{1,2}$', txt) and m_uma and int(txt) != m_uma and 1 <= int(txt) <= 18:
+                        m_pop = int(txt)
+
                 if m_uma and m_odds:
-                    try:
-                        uma = int(m_uma.group(1))
-                        odds = float(m_odds.group(1))
-                        pop = int(m_pop.group(1)) if m_pop else "未確定"
-                        odds_map[uma] = {'odds': odds, 'pop': pop}
-                    except ValueError: pass
+                    odds_map[m_uma] = {
+                        'odds': m_odds,
+                        'pop': m_pop if m_pop is not None else "未確定"
+                    }
+
     return odds_map
 
 # ---------------------------------------------------------
-# AI Score Engine (5 Factor Analysis + EV & Recovery Rate)
+# AI Score Engine
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
     if not data_list: return data_list
@@ -577,6 +581,9 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
         elif any(tj in jockey for tj in TOP_JOCKEYS_A):
             j_score = 4.0
             j_comment = f"【有力騎手】{jockey} (安定感高)"
+        else:
+            j_score = 1.0
+            j_comment = f"【鞍上】{jockey}"
 
         blood_score = 3.0
         blood_comment = "血統適性標準"
@@ -597,7 +604,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
             if waku in [1, 2, 3]:
                 bias_score = 6.0
                 bias_comment = f"【バイアス好走】内枠{waku}枠有利・前目追走可"
-            elif waku in [4, 5]:
+            elif waku in [4, 5, 6]:
                 bias_score = 3.0
                 bias_comment = "【バイアス中立】中枠可"
             else:
