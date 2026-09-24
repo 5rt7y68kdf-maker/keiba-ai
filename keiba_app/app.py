@@ -245,17 +245,15 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
             else:
                 return "追込"
 
-    # テキストからの直接キーワード抽出
     txt = str(passage_txt)
     if "逃" in txt: return "逃げ"
     if "先" in txt: return "先行"
     if "差" in txt: return "差し"
     if "追" in txt: return "追込"
 
-    # フォールバック（枠番・頭数ベース）
-    if umaban in [1, 2] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
+    if umaban in [1, 2, 3] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
         return "逃げ"
-    elif umaban in [3, 4, 5, 6]:
+    elif umaban in [4, 5, 6]:
         return "先行"
     elif umaban in [7, 8, 9, 10, 11, 12]:
         return "差し"
@@ -546,11 +544,11 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list[0].text.strip() if len(td_list) > 0 else ""
+            txt = td_list.text.strip() if len(td_list) > 0 else ""
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list[1].text.strip() if len(td_list) > 1 else ""
+            txt = td_list.text.strip() if len(td_list) > 1 else ""
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -633,7 +631,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         jockey = d.get('騎手', '')
         horse_name = d.get('馬名', '')
         
-        # 脚質の反映（手動変更・補正優先）
         leg_style = leg_style_overrides.get(uma, d.get('脚質', '先行'))
 
         try: o_val = float(odds)
@@ -671,7 +668,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
             blood_score = 5.0
             blood_comment = "【血統高適性】良馬場スピード血統"
 
-        # 脚質と展開（ペース・トラックバイアス）の適合ロジック
         pace_score = 0.0
         pace_comment = f"【脚質: {leg_style}】"
 
@@ -699,14 +695,13 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
             pace_score = 4.0
             pace_comment += " 平均ペース順当展開"
 
-        # トラックバイアスと脚質の適合
         bias_score = 0.0
         bias_comment = "馬場フラット"
         if "内伸び" in race_env['bias']:
             if waku in [1, 2, 3] and leg_style in ['逃げ', '先行']:
                 bias_score = 6.0
                 bias_comment = f"【バイアス絶好】内枠{waku}枠＋{leg_style}で経済コース通り粘り込み"
-            elif waku in [4, 5]:
+            elif waku in [1, 2, 3, 4, 5]:
                 bias_score = 3.0
                 bias_comment = "【バイアス中立】"
             else:
@@ -952,7 +947,7 @@ def calculate_capital_allocation(tickets, total_budget):
 
     return results, synthetic_odds, total_allocated
 
-def get_race_data(input_id, paddock_status_map=None, race_env=None, force_reload=False, leg_style_overrides=None):
+def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_overrides=None):
     clean_id = extract_race_id_from_input(input_id)
 
     if not clean_id or len(clean_id) != 12:
@@ -966,7 +961,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, force_reload
     if soup: data_list = parse_db_netkeiba(soup)
     elif err: errors.append(f"DB: {err}")
 
-    if not data_list or force_reload:
+    if not data_list:
         race_urls = [
             f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}",
             f"https://race.netkeiba.com/race/result.html?race_id={clean_id}"
@@ -983,7 +978,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, force_reload
     if not data_list:
         return None, f"レース出馬表データが見つかりませんでした。(試行ID: {clean_id})"
 
-    has_missing = any(d['単勝オッズ'] == "未確定" for d in data_list) or force_reload
+    has_missing = any(d['単勝オッズ'] == "未確定" for d in data_list)
     if has_missing:
         odds_map = fetch_odds_data(clean_id)
         if odds_map:
@@ -1058,10 +1053,6 @@ if target_race_id:
     if 'leg_style_map' not in st.session_state:
         st.session_state['leg_style_map'] = {}
 
-    force_reload_flag = st.session_state.get('force_reload_odds', False)
-    if force_reload_flag:
-        st.session_state['force_reload_odds'] = False
-
     st.markdown("### 🌦️ トラックバイアス・天候・展開ペルソナ調整")
     env_c1, env_c2, env_c3, env_c4 = st.columns(4)
     
@@ -1086,7 +1077,6 @@ if target_race_id:
             target_race_id,
             st.session_state['paddock_map'],
             current_race_env,
-            force_reload=force_reload_flag,
             leg_style_overrides=st.session_state['leg_style_map']
         )
 
@@ -1107,36 +1097,6 @@ if target_race_id:
             with m4:
                 h_odds_disp = f"{honmei['単勝オッズ']} 倍 ({honmei['人気']}人気)" if honmei and honmei.get('人気') != '未確定' else f"{honmei['単勝オッズ']} 倍" if honmei else "ー"
                 st.markdown(f'<div class="metric-container"><div class="metric-label">本命単勝オッズ・人気</div><div class="metric-value" style="color:#2563eb;">{h_odds_disp}</div></div>', unsafe_allow_html=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🔄 最新オッズを手動更新 (netkeibaリアルタイム取得)"):
-                st.session_state['force_reload_odds'] = True
-                st.rerun()
-
-            # ---------------------------------------------------------
-            # 🏃 各馬の過去脚質データ 調整用Expander
-            # ---------------------------------------------------------
-            with st.expander("🐴 各馬の「過去脚質データ」確認・手動調整（クリックで開く）"):
-                st.caption("過去の走り・通過順からAIが判定した脚質データです。本日ハナを奪う馬など、戦術変更を指定したい場合は選択してください。")
-                leg_cols = st.columns(3)
-                leg_options = ["逃げ", "先行", "差し", "追込"]
-                
-                updated_leg_map = {}
-                for idx, horse in enumerate(data):
-                    col_idx = idx % 3
-                    with leg_cols[col_idx]:
-                        curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
-                        sel_leg = st.selectbox(
-                            f"{horse['馬番']}番 {horse['馬名']} (現状: {curr_leg})",
-                            options=leg_options,
-                            index=leg_options.index(curr_leg) if curr_leg in leg_options else 1,
-                            key=f"leg_{target_race_id}_{horse['馬番']}_{idx}"
-                        )
-                        updated_leg_map[horse['馬番']] = sel_leg
-
-                if st.button("🔄 脚質設定を更新して展開・指数を再計算"):
-                    st.session_state['leg_style_map'] = updated_leg_map
-                    st.rerun()
 
             # ---------------------------------------------------------
             # 🏇 1. AI展開予想 ＆ ポジショニング分析 (過去脚質データ反映)
@@ -1314,8 +1274,33 @@ if target_race_id:
             )
 
             # ---------------------------------------------------------
-            # 🐴 4. 直前パドック補正
+            # 🏃 4. 各馬の過去脚質データ / パドック気配 調整用Expander
             # ---------------------------------------------------------
+            st.markdown("---")
+            st.markdown("### ⚙️ 詳細条件・状態シミュレーション補正")
+
+            with st.expander("🐴 各馬の「過去脚質データ」確認・手動調整（クリックで開く）"):
+                st.caption("過去の走り・通過順からAIが判定した脚質データです。本日ハナを奪う馬など、戦術変更を指定したい場合は選択してください。")
+                leg_cols = st.columns(3)
+                leg_options = ["逃げ", "先行", "差し", "追込"]
+                
+                updated_leg_map = {}
+                for idx, horse in enumerate(data):
+                    col_idx = idx % 3
+                    with leg_cols[col_idx]:
+                        curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
+                        sel_leg = st.selectbox(
+                            f"{horse['馬番']}番 {horse['馬名']} (現状: {curr_leg})",
+                            options=leg_options,
+                            index=leg_options.index(curr_leg) if curr_leg in leg_options else 1,
+                            key=f"leg_{target_race_id}_{horse['馬番']}_{idx}"
+                        )
+                        updated_leg_map[horse['馬番']] = sel_leg
+
+                if st.button("🔄 脚質設定を更新して展開・指数を再計算"):
+                    st.session_state['leg_style_map'] = updated_leg_map
+                    st.rerun()
+
             with st.expander("🐴 直前パドック気配・状態補正チェック（クリックで展開）"):
                 st.caption("パドックで見た気配を選択すると、AIスコアと推奨買い目がリアルタイムで再判定されます。")
                 p_cols = st.columns(3)
