@@ -9,21 +9,18 @@ import pandas as pd
 # SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 全国10競馬場のコードマップ
-VENUE_MAP = {
+# JRA 10競馬場
+JRA_VENUES = {
     "札幌": "01", "函館": "02", "福島": "03", "新潟": "04",
     "東京": "05", "中山": "06", "中京": "07", "京都": "08",
     "阪神": "09", "小倉": "10"
 }
 
-ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
+VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
 TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
 TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
 
-# ---------------------------------------------------------
-# Streamlit Page Config & High-Contrast Light Styling
-# ---------------------------------------------------------
 st.set_page_config(
     page_title="Kuina AI Racing Pro",
     page_icon="🏇",
@@ -31,7 +28,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Visual Styling
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
@@ -46,11 +42,11 @@ st.markdown("""
         font-size: 2.1rem;
         font-weight: 800;
         color: #1e3a8a;
-        margin-bottom: 1rem;
+        margin-bottom: 0.8rem;
         letter-spacing: -0.02em;
     }
 
-    /* ボタンの視認性改善（スマホ対応） */
+    /* ボタンの視認性改善（スマホ対応・太字白文字） */
     .stButton>button {
         width: 100% !important;
         background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%) !important;
@@ -93,7 +89,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Utilities & Fetchers
+# Utility & Scraping
 # ---------------------------------------------------------
 def parse_horse_weight_str(txt):
     if not txt:
@@ -160,37 +156,58 @@ def fetch_race_list_by_date(dt_str):
     if len(clean_date) != 8:
         return [], "日付は8桁の数字(YYYYMMDD)で指定してください。"
 
-    races = []
-    race_url = f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}"
-    soup, _ = fetch_html(race_url)
-    if soup:
+    races_dict = {}
+
+    urls = [
+        f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}",
+        f"https://db.netkeiba.com/race/list/{clean_date}/"
+    ]
+
+    for target_url in urls:
+        soup, _ = fetch_html(target_url)
+        if not soup:
+            continue
+
         for a in soup.find_all('a'):
             href = a.get('href', '')
-            m = re.search(r'race_id=(\d{12})', href)
-            if m:
-                r_id = m.group(1)
-                txt = a.text.strip().replace('\n', ' ')
-                txt = re.sub(r'\s+', ' ', txt)
-                if txt and not any(r['id'] == r_id for r in races):
-                    races.append({'id': r_id, 'name': txt})
+            m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
+            if not m:
+                continue
 
-    if not races:
-        db_url = f"https://db.netkeiba.com/race/list/{clean_date}/"
-        soup_db, _ = fetch_html(db_url)
-        if soup_db:
-            for a in soup_db.find_all('a'):
-                href = a.get('href', '')
-                m = re.search(r'/race/(\d{12})', href)
-                if m:
-                    r_id = m.group(1)
-                    txt = a.text.strip().replace('\n', ' ')
-                    txt = re.sub(r'\s+', ' ', txt)
-                    if txt and not any(r['id'] == r_id for r in races):
-                        races.append({'id': r_id, 'name': txt})
+            r_id = m.group(1)
+            v_code = r_id[4:6]
 
-    if not races:
-        return [], f"指定された日付 ({clean_date}) の公式出馬表データが見つかりませんでした。"
+            # JRA (01〜10) のみに限定（地方競馬排除）
+            if v_code not in VENUE_CODE_TO_NAME:
+                continue
 
+            venue_name = VENUE_CODE_TO_NAME[v_code]
+            r_num = int(r_id[10:12])
+
+            raw_text = a.text.strip().replace('\n', ' ')
+            raw_text = re.sub(r'\s+', ' ', raw_text)
+
+            clean_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+            clean_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ)', '', clean_name).strip()
+
+            if clean_name and len(clean_name) >= 2:
+                display_title = f"📍【{venue_name}】 {r_num}R {clean_name}"
+            else:
+                display_title = f"📍【{venue_name}】 {r_num}R"
+
+            if r_id not in races_dict or len(display_title) > len(races_dict[r_id]['name']):
+                races_dict[r_id] = {
+                    'id': r_id,
+                    'name': display_title,
+                    'venue': venue_name,
+                    'r_num': r_num
+                }
+
+    if not races_dict:
+        return [], f"指定された日付 ({clean_date}) のJRA公式出馬表は見つかりませんでした。（開催日か確認してください）"
+
+    races = list(races_dict.values())
+    races.sort(key=lambda x: x['id'])
     return races, None
 
 def parse_shutuba_page(soup):
@@ -345,42 +362,47 @@ def get_race_data_by_id(clean_id):
 # ---------------------------------------------------------
 st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro</div>', unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["🔗 出馬表URL / IDを直接貼り付け", "📅 日付から本物レース検索", "📌 お試しサンプル"])
+tab1, tab2, tab3 = st.tabs(["📅 日付から本物レース選択（おすすめ）", "🔗 出馬表URL / ID直貼り", "📌 サンプル出馬表"])
 
 target_race_id = None
 today = datetime.date.today()
 
 with tab1:
+    st.markdown("##### 開催日を選ぶと、その日のJRA全レース（出馬表）が一覧表示されます")
+    col_d1, col_d2 = st.columns([1, 2])
+    with col_d1:
+        selected_date = st.date_input("開催日を選択:", value=today)
+        if st.button("🔍 レース一覧（出馬表）を取得"):
+            dt_str = selected_date.strftime("%Y%m%d")
+            with st.spinner("JRA公式出馬表を検索中..."):
+                races, err = fetch_race_list_by_date(dt_str)
+                if err:
+                    st.error(err)
+                else:
+                    st.session_state['fetched_races'] = races
+
+    with col_d2:
+        if 'fetched_races' in st.session_state and st.session_state['fetched_races']:
+            race_options = {f"{r['name']} (ID: {r['id']})": r['id'] for r in st.session_state['fetched_races']}
+            selected_race_label = st.selectbox("分析したいレースを選んでください:", list(race_options.keys()))
+            if st.button("🚀 選択したレースの出馬表をAI解析"):
+                target_race_id = race_options[selected_race_label]
+
+with tab2:
     st.markdown("##### netkeibaの「出馬表URL」または「12桁レースID」を入力")
     user_url_input = st.text_input(
         "出馬表URL / レースID:",
         placeholder="例: https://race.netkeiba.com/race/shutuba.html?race_id=202405021211"
     )
-    if st.button("🚀 出馬表を直接読み込んでAI解析実行"):
+    if st.button("🚀 この出馬表を直接読み込んでAI解析"):
         extracted_id = extract_race_id_from_input(user_url_input)
         if extracted_id:
             target_race_id = extracted_id
         else:
             st.error("有効なネット競馬の出馬表URLまたは12桁レースIDを入力してください。")
 
-with tab2:
-    selected_date = st.date_input("開催日を選択:", value=today)
-    if st.button("🔍 指定日の公式出馬表一覧を取得"):
-        dt_str = selected_date.strftime("%Y%m%d")
-        races, err = fetch_race_list_by_date(dt_str)
-        if err:
-            st.error(err)
-        else:
-            st.session_state['fetched_races'] = races
-
-    if 'fetched_races' in st.session_state and st.session_state['fetched_races']:
-        race_options = {f"{r['name']} (ID: {r['id']})": r['id'] for r in st.session_state['fetched_races']}
-        selected_race_label = st.selectbox("出馬表を選択してください:", list(race_options.keys()))
-        if st.button("🚀 選択したレースの出馬表を解析"):
-            target_race_id = race_options[selected_race_label]
-
 with tab3:
-    if st.button("🏆 日本ダービー (G1) の出馬表を解析"):
+    if st.button("🏆 日本ダービー (2024年G1) の出馬表を解析してみる"):
         target_race_id = "202405021211"
 
 # ---------------------------------------------------------
