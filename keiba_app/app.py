@@ -22,7 +22,7 @@ VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
 # ---------------------------------------------------------
-# Streamlit Page Config & High-Contrast Light Styling
+# Streamlit Page Config & Compact High-Contrast Styling
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Kuina AI Racing Pro (JRA中央競馬)",
@@ -33,16 +33,14 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* 画面上部の余白をしっかり確保してタイトル見切れを完全に防止 */
+    /* 画面全体のコンテナ・余白最適化（タイトル見切れ防止のため上部余白を確保） */
     .block-container {
-        padding-top: 3.6rem !important;
-        padding-bottom: 1.2rem !important;
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
-        max-width: 99% !important;
+        padding-top: 3.5rem !important;
+        padding-bottom: 1.5rem !important;
+        max-width: 98% !important;
     }
     div[data-testid="stVerticalBlock"] {
-        gap: 0.4rem !important;
+        gap: 0.6rem !important;
     }
     
     .stApp {
@@ -51,52 +49,52 @@ st.markdown("""
         font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif;
     }
     
-    /* ヒーローヘッダー (上部に十分なマージンを設けて見切れ防止) */
+    /* ヒーローヘッダー (位置をしっかり下げて見切れ防止) */
     .hero-container {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-        border-radius: 10px;
-        padding: 12px 18px;
+        border-radius: 12px;
+        padding: 16px 20px;
         color: #ffffff;
-        margin-top: 8px;
-        margin-bottom: 10px;
-        box-shadow: 0 3px 8px rgba(37, 99, 235, 0.15);
+        margin-top: 10px;
+        margin-bottom: 12px;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15);
     }
     .hero-title {
-        font-size: 1.6rem;
+        font-size: 1.8rem;
         font-weight: 900;
         color: #ffffff;
         margin: 0;
-        line-height: 1.25;
+        line-height: 1.3;
     }
     .hero-sub {
-        font-size: 0.78rem;
+        font-size: 0.8rem;
         color: #93c5fd;
         font-weight: 700;
-        margin-top: 3px;
+        margin-top: 4px;
     }
 
-    /* ボタン */
+    /* ボタン（コンパクト・視認性高） */
     .stButton>button {
         width: 100% !important;
         background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%) !important;
         color: #ffffff !important;
         font-weight: 800 !important;
-        font-size: 0.9rem !important;
-        border-radius: 6px !important;
+        font-size: 0.95rem !important;
+        border-radius: 10px !important;
         border: none !important;
-        padding: 6px 12px !important;
-        box-shadow: 0 2px 5px rgba(37, 99, 235, 0.18) !important;
-        margin-bottom: 3px !important;
+        padding: 8px 14px !important;
+        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2) !important;
+        margin-bottom: 4px !important;
     }
 
-    /* 予想カード */
+    /* 予想馬カード（スマート・省スペース設計） */
     .horse-card {
         background: #ffffff;
-        border-radius: 10px;
-        padding: 10px 14px !important;
+        border-radius: 12px;
+        padding: 14px 16px;
         border: 1px solid #cbd5e1;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
-        margin-bottom: 6px !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+        margin-bottom: 8px;
         word-break: break-word !important;
         white-space: normal !important;
     }
@@ -104,48 +102,25 @@ st.markdown("""
     .card-taikou { border-left: 5px solid #059669; background: #f0fdf4; }
     .card-tanana { border-left: 5px solid #2563eb; background: #eff6ff; }
 
-    .badge-honmei { background: #dc2626; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 0.78rem; }
-    .badge-taikou { background: #059669; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 0.78rem; }
-    .badge-tanana { background: #2563eb; color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 0.78rem; }
+    .badge-honmei { background: #dc2626; color: white; padding: 2px 10px; border-radius: 14px; font-weight: bold; font-size: 0.8rem; }
+    .badge-taikou { background: #059669; color: white; padding: 2px 10px; border-radius: 14px; font-weight: bold; font-size: 0.8rem; }
+    .badge-tanana { background: #2563eb; color: white; padding: 2px 10px; border-radius: 14px; font-weight: bold; font-size: 0.8rem; }
 
-    /* 枠番・馬番バッジの左右パディング・マージンを極限まで詰める */
-    .waku-badge {
-        display: inline-block;
-        background: #334155;
-        color: #ffffff;
-        font-weight: 800;
-        padding: 0px 4px !important;
-        border-radius: 3px;
-        font-size: 0.75rem;
-        margin-right: 2px !important;
-        letter-spacing: -0.02em;
-    }
-    .uma-badge {
-        display: inline-block;
-        background: #0f172a;
-        color: #ffffff;
-        font-weight: 800;
-        padding: 0px 5px !important;
-        border-radius: 3px;
-        font-size: 0.82rem;
-        margin-right: 3px !important;
-        letter-spacing: -0.02em;
-    }
-
-    /* 展開・指標・計算カード */
+    /* 展開予想カード */
     .pace-card {
         background: #ffffff;
         border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 8px 10px !important;
-        margin-bottom: 4px !important;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 6px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.02);
     }
     .pace-title {
         font-weight: 800;
-        font-size: 0.85rem;
-        margin-bottom: 2px;
-        padding: 1px 5px;
-        border-radius: 3px;
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+        padding: 2px 6px;
+        border-radius: 4px;
         display: inline-block;
     }
     .pace-nige { background: #fee2e2; color: #991b1b; }
@@ -153,64 +128,69 @@ st.markdown("""
     .pace-sashi { background: #dbeafe; color: #1e40af; }
     .pace-oikomi { background: #fef9c3; color: #854d0e; }
 
-    .bet-card, .calc-card, .sim-card {
+    /* 買い目・指標カード */
+    .bet-card {
         background: #ffffff;
-        border-radius: 8px;
-        padding: 10px 12px !important;
         border: 1px solid #cbd5e1;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-        margin-bottom: 4px !important;
+        border-radius: 10px;
+        padding: 12px;
+        height: 100%;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+        margin-bottom: 6px;
     }
     .bet-title {
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
         color: #1e40af;
-        margin-bottom: 3px;
+        margin-bottom: 4px;
     }
     .bet-code {
         font-family: monospace;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
         background: #f1f5f9;
-        padding: 5px 8px;
-        border-radius: 4px;
+        padding: 6px 10px;
+        border-radius: 6px;
         color: #0f172a;
         font-weight: bold;
         border: 1px solid #cbd5e1;
-        margin: 3px 0;
+        margin: 4px 0;
         white-space: pre-line;
         word-break: break-all;
     }
 
+    .calc-card, .sim-card {
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 14px;
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        margin-bottom: 8px;
+    }
     .metric-container {
         background: #ffffff;
         border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 8px 12px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        border-radius: 10px;
+        padding: 10px 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.02);
     }
     .metric-label {
-        font-size: 0.74rem;
+        font-size: 0.75rem;
         color: #64748b;
         font-weight: 700;
     }
     .metric-value {
-        font-size: 1.05rem;
+        font-size: 1.1rem;
         font-weight: 800;
         color: #0f172a;
         margin-top: 1px;
     }
     div[data-testid="stDataFrame"] {
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid #cbd5e1;
         background: #ffffff;
     }
-    
-    /* 表（DataFrame）のセル内余白をタイトにして横幅を縮小 */
-    div[data-testid="stDataFrame"] td, div[data-testid="stDataFrame"] th {
-        padding: 4px 6px !important;
-    }
     hr {
-        margin: 0.5rem 0 !important;
+        margin: 0.8rem 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -271,9 +251,9 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
 
     if umaban in [1, 2] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
         return "逃げ"
-    elif umaban in [3, 4, 5, 6, 7]:
+    elif umaban in [3, 4, 5, 6]:
         return "先行"
-    elif umaban in [8, 9, 10, 11, 12, 13]:
+    elif umaban in [7, 8, 9, 10, 11, 12]:
         return "差し"
     else:
         return "追込"
@@ -617,7 +597,9 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         
         leg_style = leg_style_overrides.get(uma, d.get('脚質', '先行'))
 
-        # 1. 血統適性 (最大 30pt)
+        # --------------------------------------------------
+        # 1. 血統適性スコア (メインファクター①: 最大 30pt)
+        # --------------------------------------------------
         blood_score = 15.0
         blood_comment = "血統標準"
         if race_env['condition'] in ['重', '不良', '稍重']:
@@ -630,12 +612,14 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         else:
             if any(kw in horse_name for kw in ["ディープ", "ハーツ", "ロード", "ドゥラ", "エピファ", "モーリス", "シルク", "リアル"]):
                 blood_score = 28.0
-                blood_comment = "【血統特注】良馬場高速スピード血統"
+                blood_comment = "【血統特注】良馬場高速馬場スピード血統"
             else:
                 blood_score = 22.0
                 blood_comment = "【血統適合】標準良馬場スピード血統"
 
-        # 2. 脚質・展開適合 (最大 35pt)
+        # --------------------------------------------------
+        # 2. 脚質・展開適合スコア (メインファクター②: 最大 35pt)
+        # --------------------------------------------------
         pace_score = 20.0
         pace_comment = f"【脚質: {leg_style}】"
 
@@ -645,41 +629,43 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
                 pace_comment += " スロー展開絶好！前残り圧倒的有利"
             elif leg_style == '差し':
                 pace_score = 15.0
-                pace_comment += " スロー展開で前捕獲微妙"
+                pace_comment += " スロー展開で前を捕らえきれるか微妙"
             else:
                 pace_score = 8.0
-                pace_comment += " スロー展開で後方極めて厳しい"
+                pace_comment += " スロー展開で後方待機極めて厳しい"
         elif race_env['pace'] == 'ハイペース（差し有利）':
             if leg_style in ['差し', '追込']:
                 pace_score = 33.0
-                pace_comment += " ハイペース消耗戦で差し・追い込み絶好！"
+                pace_comment += " ハイペース消耗戦で差し・追い込み絶好好機！"
             elif leg_style == '先行':
                 pace_score = 15.0
                 pace_comment += " 前半競り合い消耗懸念"
             else:
                 pace_score = 8.0
-                pace_comment += " 逃げ潰れ危険"
-        else:
+                pace_comment += " 逃げ潰れ危険大"
+        else: # ミドルペース
             if leg_style in ['先行', '差し']:
                 pace_score = 30.0
-                pace_comment += " ミドルペース順当展開"
+                pace_comment += " ミドルペース順当展開・自在性活きる"
             else:
                 pace_score = 22.0
-                pace_comment += " 標準展開"
+                pace_comment += " ミドルペース標準展開"
 
-        # 3. 馬場適性・トラックバイアス (最大 25pt)
+        # --------------------------------------------------
+        # 3. 馬場適性・トラックバイアス (メインファクター③: 最大 25pt)
+        # --------------------------------------------------
         bias_score = 15.0
         bias_comment = "馬場フラット"
         if "内伸び" in race_env['bias']:
             if waku in [1, 2, 3] and leg_style in ['逃げ', '先行']:
                 bias_score = 25.0
-                bias_comment = f"【馬場バイアス絶好】内枠{waku}枠＋{leg_style}"
-            elif waku in [1, 2, 3, 4]:
+                bias_comment = f"【馬場バイアス絶好】内枠{waku}枠＋{leg_style}で絶好イン狙い"
+            elif waku in [1, 2, 3, 4, 5]:
                 bias_score = 18.0
                 bias_comment = f"【馬場バイアス良好】内～中枠{waku}枠"
             else:
                 bias_score = 8.0
-                bias_comment = "【馬場バイアス懸念】外枠ロス警戒"
+                bias_comment = "【馬場バイアス懸念】外枠位置取りロス警戒"
         elif "外伸び" in race_env['bias']:
             if leg_style in ['差し', '追込'] or waku in [6, 7, 8]:
                 bias_score = 25.0
@@ -690,15 +676,35 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         else:
             bias_score = 18.0
 
-        # 4. 馬体・斤量・パドック (補助)
-        hw_score = 5.0 if abs(hw_diff) <= 4 else (-4.0 if hw_diff >= 10 else (-5.0 if hw_diff <= -10 else 0.0))
-        hw_comment = "仕上がり良好" if abs(hw_diff) <= 4 else ("太め残り" if hw_diff >= 10 else ("大幅減" if hw_diff <= -10 else "許容範囲"))
+        # --------------------------------------------------
+        # 4. 馬体コンディション・パドック・斤量 (補助ファクター)
+        # --------------------------------------------------
+        if abs(hw_diff) <= 4:
+            hw_score = 5.0
+            hw_comment = "仕上がり良好"
+        elif hw_diff >= 10:
+            hw_score = -4.0
+            hw_comment = "太め残り警戒"
+        elif hw_diff <= -10:
+            hw_score = -5.0
+            hw_comment = "大幅減警戒"
+        else:
+            hw_score = 0.0
+            hw_comment = "許容範囲"
 
         weight_bonus = max(-3.0, min(5.0, (56.0 - weight) * 2.0))
 
         p_status = paddock_status_map.get(uma, "⚪ 普通 (0pt)")
-        paddock_score = 7.0 if "絶好調" in p_status else (-4.0 if "太め残り" in p_status else (-5.0 if "テンション高" in p_status else 0.0))
+        if "絶好調" in p_status:
+            paddock_score = 7.0
+        elif "太め残り" in p_status:
+            paddock_score = -4.0
+        elif "テンション高" in p_status:
+            paddock_score = -5.0
+        else:
+            paddock_score = 0.0
 
+        # ※ 人気 (pop) および 騎手 (jockey) は指数計算から完全に排除
         raw_score = blood_score + pace_score + bias_score + hw_score + weight_bonus + paddock_score
         score = round(min(99.9, max(10.0, raw_score)), 1)
 
@@ -836,6 +842,33 @@ def generate_betting_recommendations(data_list, strategy_mode="⚖️ バラン�
 
     return all_bets
 
+def calculate_capital_allocation(tickets, total_budget):
+    valid_tickets = [t for t in tickets if t.get('odds', 0) > 0]
+    if not valid_tickets or total_budget <= 0: return [], 0, 0
+
+    inv_sum = sum(1.0 / t['odds'] for t in valid_tickets)
+    synthetic_odds = round(1.0 / inv_sum, 2) if inv_sum > 0 else 0
+
+    results = []
+    for t in valid_tickets:
+        raw_alloc = total_budget / (t['odds'] * inv_sum)
+        alloc_100 = max(100, round(raw_alloc / 100.0) * 100)
+        expected_payout = round(alloc_100 * t['odds'])
+        expected_profit = expected_payout - total_budget
+        results.append({
+            '買い目': t['name'],
+            'オッズ': f"{t['odds']}倍",
+            '最適配分金額': f"{alloc_100:,}円",
+            '的中時払戻想定': f"{expected_payout:,}円",
+            '的中時推定純利益': f"{'+' if expected_profit > 0 else ''}{expected_profit:,}円",
+            '_alloc': alloc_100
+        })
+
+    total_allocated = sum(r['_alloc'] for r in results)
+    for r in results: del r['_alloc']
+
+    return results, synthetic_odds, total_allocated
+
 def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_overrides=None):
     clean_id = extract_race_id_from_input(input_id)
     if not clean_id or len(clean_id) != 12:
@@ -880,7 +913,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
     return data_list, None
 
 # ---------------------------------------------------------
-# UI Header (見切れ防止のため十分な上部余白確保)
+# UI Header (見切れ防止のためマージン・パディング確保)
 # ---------------------------------------------------------
 st.markdown("""
 <div class="hero-container">
@@ -952,7 +985,7 @@ if target_race_id:
             with m1: st.markdown(f'<div class="metric-container"><div class="metric-label">レースID</div><div class="metric-value">{target_race_id}</div></div>', unsafe_allow_html=True)
             with m2: st.markdown(f'<div class="metric-container"><div class="metric-label">頭数</div><div class="metric-value">{len(data)} 頭</div></div>', unsafe_allow_html=True)
             with m3:
-                h_name_disp = f"<span class='waku-badge'>{honmei['枠番']}枠</span><span class='uma-badge'>{honmei['馬番']}番</span>{honmei['馬名']}" if honmei else "ー"
+                h_name_disp = f"{honmei['馬番']}番 {honmei['馬名']}" if honmei else "ー"
                 st.markdown(f'<div class="metric-container"><div class="metric-label">AI最有力 本命馬</div><div class="metric-value" style="color:#dc2626;">{h_name_disp}</div></div>', unsafe_allow_html=True)
             with m4:
                 h_o_str = format_odds_val(honmei['単勝オッズ']) if honmei else "ー"
@@ -966,9 +999,9 @@ if target_race_id:
             nige_list, senko_list, sashi_list, oikomi_list = [], [], [], []
 
             for d in data:
-                u_waku, u_num, u_name = d['枠番'], d['馬番'], d['馬名']
+                u_num, u_name = d['馬番'], d['馬名']
                 leg = d.get('脚質', '先行')
-                label = f"[{u_waku}枠{u_num}番 {u_name}]"
+                label = f"{u_num} {u_name}"
                 if "逃げ" in leg: nige_list.append(label)
                 elif "先行" in leg: senko_list.append(label)
                 elif "差し" in leg: sashi_list.append(label)
@@ -976,10 +1009,10 @@ if target_race_id:
                 else: senko_list.append(label)
 
             pc1, pc2, pc3, pc4 = st.columns(4)
-            with pc1: st.markdown(f'<div class="pace-card"><span class="pace-title pace-nige">🏃 逃げ</span><p style="font-size:0.8rem; margin-top:2px; font-weight:600;">{", ".join(nige_list) if nige_list else "なし"}</p></div>', unsafe_allow_html=True)
-            with pc2: st.markdown(f'<div class="pace-card"><span class="pace-title pace-senko">🐎 先行</span><p style="font-size:0.8rem; margin-top:2px; font-weight:600;">{", ".join(senko_list) if senko_list else "なし"}</p></div>', unsafe_allow_html=True)
-            with pc3: st.markdown(f'<div class="pace-card"><span class="pace-title pace-sashi">🏇 差し</span><p style="font-size:0.8rem; margin-top:2px; font-weight:600;">{", ".join(sashi_list) if sashi_list else "なし"}</p></div>', unsafe_allow_html=True)
-            with pc4: st.markdown(f'<div class="pace-card"><span class="pace-title pace-oikomi">🐎💨 追込</span><p style="font-size:0.8rem; margin-top:2px; font-weight:600;">{", ".join(oikomi_list) if oikomi_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc1: st.markdown(f'<div class="pace-card"><span class="pace-title pace-nige">🏃 逃げ</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600;">{", ".join(nige_list) if nige_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc2: st.markdown(f'<div class="pace-card"><span class="pace-title pace-senko">🐎 先行</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600;">{", ".join(senko_list) if senko_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc3: st.markdown(f'<div class="pace-card"><span class="pace-title pace-sashi">🏇 差し</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600;">{", ".join(sashi_list) if sashi_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc4: st.markdown(f'<div class="pace-card"><span class="pace-title pace-oikomi">🐎💨 追込</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600;">{", ".join(oikomi_list) if oikomi_list else "なし"}</p></div>', unsafe_allow_html=True)
 
             # ---------------------------------------------------------
             # 🎯 2. AI選定・上位評価馬
@@ -1001,36 +1034,36 @@ if target_race_id:
                     st.markdown(f"""
                     <div class="horse-card {card_styles[idx]}">
                         <span class="{badges[idx]}">{mark_names[idx]}</span>
-                        <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin: 4px 0 2px 0;">
-                            <span class="waku-badge">{horse['枠番']}枠</span><span class="uma-badge">{horse['馬番']}番</span>{horse['馬名']}
+                        <div style="font-size: 1.3rem; font-weight: 800; color: #0f172a; margin: 6px 0 4px 0;">
+                            {horse['馬番']}番 {horse['馬名']}
                         </div>
-                        <p style="font-size: 0.95rem; color: #1e3a8a; font-weight: 800; margin-bottom: 2px;">
+                        <p style="font-size: 1.05rem; color: #1e3a8a; font-weight: 800; margin-bottom: 3px;">
                             単勝オッズ: <strong>{o_txt}</strong> ({p_txt})
                         </p>
-                        <p style="color: #2563eb; font-weight: bold; font-size: 0.88rem; margin-bottom: 2px;">
+                        <p style="color: #2563eb; font-weight: bold; font-size: 0.95rem; margin-bottom: 3px;">
                             AI適性スコア: {horse['AI予想スコア']} pt | 騎手: {horse['騎手']}
                         </p>
-                        <p style="color: #059669; font-weight: bold; font-size: 0.82rem; margin-bottom: 2px;">
+                        <p style="color: #059669; font-weight: bold; font-size: 0.88rem; margin-bottom: 3px;">
                             過去脚質: <strong>{horse.get('脚質', '先行')}</strong> | 期待回収率: {horse['期待回収率']}
                         </p>
-                        <p style="margin: 1px 0; color: #334155; font-size: 0.8rem;">
+                        <p style="margin: 2px 0; color: #334155; font-size: 0.85rem;">
                             馬体重: {horse['馬体重']} | 斤量: {horse['斤量']}kg
                         </p>
-                        <p style="margin: 2px 0; color: #047857; font-size: 0.8rem;">
+                        <p style="margin: 3px 0; color: #047857; font-size: 0.83rem;">
                             <strong>血統適性:</strong> {horse['血統適性']}
                         </p>
-                        <p style="margin: 2px 0; color: #1e40af; font-size: 0.8rem;">
+                        <p style="margin: 3px 0; color: #1e40af; font-size: 0.83rem;">
                             <strong>バイアス展開:</strong> {horse['バイアス展開']}
                         </p>
-                        <hr style="margin: 4px 0 !important;">
-                        <p style="font-size: 0.8rem; color: #334155; line-height: 1.35;">
+                        <hr style="margin: 6px 0 !important;">
+                        <p style="font-size: 0.85rem; color: #334155; line-height: 1.4;">
                             <strong>💡 予想根拠:</strong><br>{horse['予想根拠']}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 📋 3. AI予想・全出走馬データ一覧表 (枠・馬番および各種数値カラムの横幅を極限まで詰める)
+            # 📋 3. AI予想・全出走馬データ一覧表
             # ---------------------------------------------------------
             st.markdown("##### 📋 AI予想・全出走馬データ一覧表")
             
@@ -1045,24 +1078,23 @@ if target_race_id:
                 elif '☆' in str(val): return 'background-color: #fef9c3; color: #854d0e; font-weight: bold;'
                 return ''
 
-            # 横幅(width)をタイトに制御して無駄な余白・横幅をカット
             column_config = {
-                "予想印": st.column_config.TextColumn("印", width=55),
-                "枠番": st.column_config.NumberColumn("枠", width=45, format="%d"),
-                "馬番": st.column_config.NumberColumn("馬番", width=50, format="%d"),
-                "馬名": st.column_config.TextColumn("馬名", width=120),
-                "単勝オッズ": st.column_config.TextColumn("オッズ", width=70),
-                "人気": st.column_config.TextColumn("人気", width=55),
-                "脚質": st.column_config.TextColumn("脚質", width=65),
-                "AI予想スコア": st.column_config.NumberColumn("適性pt", width=70, format="%.1f"),
-                "AI想定勝率": st.column_config.TextColumn("勝率", width=65),
-                "期待回収率": st.column_config.TextColumn("回収率", width=70),
-                "騎手": st.column_config.TextColumn("騎手", width=90),
-                "血統適性": st.column_config.TextColumn("血統適性", width=180),
-                "バイアス展開": st.column_config.TextColumn("バイアス展開", width=200),
-                "馬体重": st.column_config.TextColumn("馬体重", width=90),
-                "パドック評価": st.column_config.TextColumn("パドック", width=110),
-                "予想根拠": st.column_config.TextColumn("予想根拠", width=260)
+                "予想印": st.column_config.TextColumn("印", width="small"),
+                "枠番": st.column_config.NumberColumn("枠", width="small"),
+                "馬番": st.column_config.NumberColumn("馬番", width="small"),
+                "馬名": st.column_config.TextColumn("馬名", width="medium"),
+                "単勝オッズ": st.column_config.TextColumn("単勝オッズ", width="small"),
+                "人気": st.column_config.TextColumn("人気", width="small"),
+                "脚質": st.column_config.TextColumn("過去脚質", width="small"),
+                "AI予想スコア": st.column_config.NumberColumn("適性スコア", width="small", format="%.1f"),
+                "AI想定勝率": st.column_config.TextColumn("勝率", width="small"),
+                "期待回収率": st.column_config.TextColumn("回収率", width="small"),
+                "騎手": st.column_config.TextColumn("騎手", width="medium"),
+                "血統適性": st.column_config.TextColumn("血統適性", width="large"),
+                "バイアス展開": st.column_config.TextColumn("バイアス展開", width="large"),
+                "馬体重": st.column_config.TextColumn("馬体重", width="small"),
+                "パドック評価": st.column_config.TextColumn("パドック", width="medium"),
+                "予想根拠": st.column_config.TextColumn("予想根拠", width="large")
             }
 
             st.dataframe(
@@ -1070,7 +1102,7 @@ if target_race_id:
                 use_container_width=True,
                 column_config=column_config,
                 hide_index=True,
-                height=380
+                height=400
             )
 
             # ---------------------------------------------------------
@@ -1081,22 +1113,22 @@ if target_race_id:
                 leg_options = ["逃げ", "先行", "差し", "追込"]
                 updated_leg_map = {}
                 with leg_cols[0]:
-                    st.caption("🐴 過去脚質の手動変更 (前半)")
+                    st.caption("🐴 過去脚質の手動変更 (前半頭数)")
                     for idx, horse in enumerate(data[:len(data)//2 + 1]):
                         curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
                         sel_leg = st.selectbox(
-                            f"{horse['枠番']}枠{horse['馬番']}番 {horse['馬名']}",
+                            f"{horse['馬番']}番 {horse['馬名']}",
                             options=leg_options,
                             index=leg_options.index(curr_leg) if curr_leg in leg_options else 1,
                             key=f"leg1_{target_race_id}_{horse['馬番']}"
                         )
                         updated_leg_map[horse['馬番']] = sel_leg
                 with leg_cols[1]:
-                    st.caption("🐴 過去脚質の手動変更 (後半)")
+                    st.caption("🐴 過去脚質の手動変更 (後半頭数)")
                     for idx, horse in enumerate(data[len(data)//2 + 1:]):
                         curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
                         sel_leg = st.selectbox(
-                            f"{horse['枠番']}枠{horse['馬番']}番 {horse['馬名']}",
+                            f"{horse['馬番']}番 {horse['馬名']}",
                             options=leg_options,
                             index=leg_options.index(curr_leg) if curr_leg in leg_options else 1,
                             key=f"leg2_{target_race_id}_{horse['馬番']}"
@@ -1126,9 +1158,9 @@ if target_race_id:
                         st.markdown(f"""
                         <div class="bet-card">
                             <div class="bet-title">{b_name}</div>
-                            <div style="font-size: 0.78rem; color: #64748b;">{b_info['方式']} ({b_info['点数']})</div>
+                            <div style="font-size: 0.8rem; color: #64748b;">{b_info['方式']} ({b_info['点数']})</div>
                             <div class="bet-code">{b_info['買い目']}</div>
-                            <div style="font-size: 0.78rem; color: #475569;">{b_info['解説']}</div>
+                            <div style="font-size: 0.8rem; color: #475569;">{b_info['解説']}</div>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -1188,7 +1220,7 @@ if target_race_id:
                         st.line_chart(hist_df[['日時', '累計損益']].set_index('日時'))
 
                     st.markdown("##### 📜 記録一覧 ＆ 誤入力の個別削除")
-                    st.dataframe(hist_df[['日時', 'レースID', '馬券種', '投資額', '払戻額', '収支', '回収率']], use_container_width=True, height=130)
+                    st.dataframe(hist_df[['日時', 'レースID', '馬券種', '投資額', '払戻額', '収支', '回収率']], use_container_width=True, height=140)
 
                     # 確実に動作する個別削除ロジック
                     record_map = {
