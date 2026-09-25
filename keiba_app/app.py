@@ -27,151 +27,114 @@ TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸
 TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
 
 # ---------------------------------------------------------
-# Streamlit Page Config & Eye-Catching Premium Bold Styling
+# Streamlit Page Config & High-Contrast Light Clean Styling
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Kuina AI Racing Eye-Catching Pro",
+    page_title="Kuina AI Racing Pro",
     page_icon="🏇",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;800;900&display=swap');
     
+    /* 全体背景: くっきり見やすい清潔感ある明るい白系デザイン */
     .stApp {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        color: #f8fafc;
+        background-color: #f1f5f9;
+        color: #0f172a;
         font-family: 'Noto Sans JP', sans-serif;
     }
     
-    /* 超目立つグラデーションヘッダー */
-    .hero-banner {
-        background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #1d4ed8 100%);
-        border-radius: 16px;
-        padding: 20px;
+    /* ヘッダー */
+    .main-header {
+        background: #1e3a8a;
+        border-radius: 12px;
+        padding: 16px;
         text-align: center;
-        box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+        color: #ffffff;
         margin-bottom: 20px;
-        border: 2px solid #60a5fa;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
-    .hero-title {
-        font-size: 2.2rem;
+    .main-header h1 {
+        font-size: 1.8rem;
         font-weight: 900;
-        color: #ffffff;
-        text-shadow: 0 2px 8px rgba(0,0,0,0.5);
         margin: 0;
-        letter-spacing: 0.05em;
-    }
-    .hero-subtitle {
-        font-size: 1.0rem;
-        color: #bfdbfe;
-        font-weight: 700;
-        margin-top: 6px;
-    }
-
-    /* メインツールパネル */
-    .tool-panel-box {
-        background: #1e293b;
-        border: 2px solid #334155;
-        border-radius: 16px;
-        padding: 18px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    }
-
-    /* 目立つ馬カードデザイン */
-    .horse-card {
-        border-radius: 16px;
-        padding: 18px;
-        margin-bottom: 14px;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.4);
         color: #ffffff;
-        position: relative;
-        overflow: hidden;
+    }
+
+    /* ステップ見出し */
+    .step-header {
+        background: #ffffff;
+        border-left: 6px solid #2563eb;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-size: 1.2rem;
+        font-weight: 900;
+        color: #1e293b;
+        margin: 20px 0 12px 0;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    /* 超くっきり見やすい白背景カード（文字の同化を完全に防止） */
+    .card-clean {
+        background: #ffffff !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        color: #0f172a !important;
     }
     
     .card-honmei {
-        background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%);
-        border: 2px solid #fca5a5;
+        border: 3px solid #dc2626 !important;
+        background: #fff5f5 !important;
     }
     .card-taikou {
-        background: linear-gradient(135deg, #065f46 0%, #059669 100%);
-        border: 2px solid #6ee7b7;
+        border: 3px solid #059669 !important;
+        background: #f0fdf4 !important;
     }
     .card-tanana {
-        background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
-        border: 2px solid #93c5fd;
+        border: 3px solid #2563eb !important;
+        background: #eff6ff !important;
     }
 
-    .badge-honmei { background: #fef2f2; color: #991b1b; padding: 6px 14px; border-radius: 20px; font-weight: 900; font-size: 0.95rem; display: inline-block; }
-    .badge-taikou { background: #ecfdf5; color: #065f46; padding: 6px 14px; border-radius: 20px; font-weight: 900; font-size: 0.95rem; display: inline-block; }
-    .badge-tanana { background: #eff6ff; color: #1e40af; padding: 6px 14px; border-radius: 20px; font-weight: 900; font-size: 0.95rem; display: inline-block; }
+    .badge-honmei { background: #dc2626; color: #ffffff; padding: 4px 12px; border-radius: 16px; font-weight: 800; font-size: 0.85rem; }
+    .badge-taikou { background: #059669; color: #ffffff; padding: 4px 12px; border-radius: 16px; font-weight: 800; font-size: 0.85rem; }
+    .badge-tanana { background: #2563eb; color: #ffffff; padding: 4px 12px; border-radius: 16px; font-weight: 800; font-size: 0.85rem; }
 
-    .horse-name-title {
-        font-size: 1.45rem;
+    .horse-title {
+        font-size: 1.35rem;
         font-weight: 900;
-        color: #ffffff;
-        margin: 10px 0 6px 0;
-        line-height: 1.2;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        color: #0f172a !important;
+        margin: 8px 0;
     }
 
-    .stat-badge {
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 8px;
-        padding: 6px 10px;
-        margin-top: 6px;
-        font-size: 0.9rem;
+    .stat-row {
+        font-size: 0.95rem;
+        color: #1e293b !important;
+        margin-bottom: 4px;
         font-weight: 700;
     }
 
-    /* AIコメント＆買い目カード */
-    .ai-comment-card {
-        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-        border: 2px solid #818cf8;
-        border-radius: 16px;
-        padding: 18px;
-        margin-top: 15px;
-        margin-bottom: 20px;
-        box-shadow: 0 6px 18px rgba(99, 102, 241, 0.25);
-    }
-    
-    .bet-card-pro {
-        background: #1e293b;
-        border: 2px solid #f59e0b;
-        border-radius: 14px;
+    .ai-box {
+        background: #f0f9ff;
+        border: 2px solid #0284c7;
+        border-radius: 12px;
         padding: 16px;
-        margin-bottom: 12px;
-    }
-    .bet-title-pro {
-        font-weight: 900;
-        font-size: 1.1rem;
-        color: #fbbf24;
-        margin-bottom: 8px;
-    }
-    .bet-code-pro {
-        font-family: monospace;
-        font-size: 1.1rem;
-        background: #0f172a;
-        padding: 10px;
-        border-radius: 10px;
-        color: #fef08a;
-        font-weight: 800;
-        border: 1px solid #eab308;
-        margin: 8px 0;
-        white-space: pre-line;
+        color: #0369a1;
+        font-weight: 600;
+        margin-top: 12px;
     }
 
-    /* スマホ＆PC対応の目立つボタン */
+    /* スマホ・PCボタン調整 */
     .stButton > button {
         width: 100% !important;
-        min-height: 50px !important;
-        font-size: 1.05rem !important;
+        min-height: 48px !important;
+        font-size: 1.0rem !important;
         font-weight: 800 !important;
-        border-radius: 12px !important;
-        transition: all 0.2s ease-in-out !important;
+        border-radius: 10px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -186,7 +149,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -338,18 +301,15 @@ def fetch_odds_data(clean_id):
 # ---------------------------------------------------------
 def generate_ai_analysis_comment(honmei, taikou, tanana, track_cond, pace_setting):
     comment_parts = []
-    
     jockey_h = honmei['騎手']
     j_eval = "トップジョッキー鞍上で勝負気配良好。" if any(j in jockey_h for j in TOP_JOCKEYS_S + TOP_JOCKEYS_A) else "主戦騎手とのコンビで一発に期待。"
     w_eval = "好調な馬体重を維持。" if honmei['体重増減'] in range(-4, 5) else "当日の気配に注目。"
-    comment_parts.append(f"🔥 **【本命 ◎ {honmei['馬番']}番 {honmei['馬名']}】**\nAI指数**{honmei['AI指数']}**で最上位評価。{j_eval}{w_eval} {track_cond}馬場および{pace_setting}の展開アドバンテージも大きく、軸として信頼度抜群です。")
-    
-    comment_parts.append(f"⚡ **【対抗 ◯ {taikou['馬番']}番 {taikou['馬名']} & 単穴 ▲ {tanana['馬番']}番 {tanana['馬名']}】**\n対抗の{taikou['馬名']}（{taikou['騎手']}）は勝率予測{taikou['勝率予測']}%で逆転筆頭。単穴の{tanana['馬名']}は展開ひとつで上位浮上が狙える穴目の要注目馬です。")
-    
+    comment_parts.append(f"**【本命 ◎ {honmei['馬番']}番 {honmei['馬名']}】**\nAI指数{honmei['AI指数']}で最上位評価。{j_eval}{w_eval} {track_cond}馬場および{pace_setting}の展開アドバンテージも大きく、軸として信頼度抜群です。")
+    comment_parts.append(f"**【対抗 ◯ {taikou['馬番']}番 {taikou['馬名']} & 単穴 ▲ {tanana['馬番']}番 {tanana['馬名']}】**\n対抗の{taikou['馬名']}（{taikou['騎手']}）は勝率予測{taikou['勝率予測']}%で逆転筆頭。単穴の{tanana['馬名']}は展開ひとつで上位浮上が狙える穴目の要注目馬です。")
     return "\n\n".join(comment_parts)
 
 # ---------------------------------------------------------
-# AI Prediction Engine + All Advanced Tools
+# AI Prediction Engine
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース"):
     if not data_list: return []
@@ -366,8 +326,9 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         sorted_by_power = sorted(data_list, key=lambda x: x.get('est_power', 50.0), reverse=True)
         for rank, d in enumerate(sorted_by_power, 1):
             p_odds = round(2.0 + (rank ** 1.3) * 1.5, 1)
-            d['単勝オッズ'] = f"{p_odds} (暫定)"
-            d['人気'] = f"{rank} (暫定)"
+            # 「(暫定)」表記を削除し数値のみ設定
+            d['単勝オッズ'] = p_odds
+            d['人気'] = rank
             d['numeric_odds'] = p_odds
     else:
         for d in data_list:
@@ -473,12 +434,12 @@ if 'active_race_id' not in st.session_state:
     st.session_state['active_race_id'] = '202606040811'
 
 # ---------------------------------------------------------
-# Streamlit Responsive Main App UI - Eye-Catching Banner
+# MAIN APP HEADER
 # ---------------------------------------------------------
 st.markdown("""
-<div class="hero-banner">
-    <div class="hero-title">🏇 Kuina AI Racing Pro</div>
-    <div class="hero-subtitle">全自動オッズ解析・AI指数・回収率配分シミュレーター</div>
+<div class="main-header">
+    <h1>🏇 Kuina AI Racing Pro</h1>
+    <div>AIオッズ解析・パドック補正・トリガミ防止資金配分</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -489,28 +450,14 @@ days_to_sat = (5 - today_jst.weekday()) % 7
 sat_date = today_jst + datetime.timedelta(days=days_to_sat)
 sun_date = sat_date + datetime.timedelta(days=1)
 
-# ---------------------------------------------------------
-# 🌟 メイン画面最上部: 超目立つ AI予想カスタム＆コントロールパネル
-# ---------------------------------------------------------
-st.markdown("### ⚙️ レース条件・オッズシミュレーター設定")
-c1, c2, c3 = st.columns(3)
-with c1:
-    track_cond = st.selectbox("🌦 馬場状態", ["良", "稍重", "重", "不良"], index=0)
-with c2:
-    sel_pace = st.selectbox("🏃 展開・ペース", ["ミドルペース", "スローペース（前残り）", "ハイペース（差し有利）"], index=0)
-with c3:
-    selected_ticket = st.selectbox("🎫 推奨勝馬投票券", ALL_TICKET_TYPES, index=3)
+# =========================================================
+# 【Step 1】 レース選択 (日付 / 条件指定 / 12桁ID)
+# =========================================================
+st.markdown('<div class="step-header">Step 1 🎯 対象レースを選択する</div>', unsafe_allow_html=True)
 
-budget = st.number_input("💰 総購入予算 (円)", min_value=1000, value=10000, step=1000)
-
-# ---------------------------------------------------------
-# MAIN: 3つの検索タブ (日付選択 / 条件指定 / 12桁ID入力)
-# ---------------------------------------------------------
-st.markdown("---")
 tab1, tab2, tab3 = st.tabs(["📅 今週・日付で全レース検索", "⚙️ 競馬場・条件直接指定 (JRA12桁ID)", "🔢 12桁ID直接入力"])
 
 with tab1:
-    st.markdown("#### 📅 今週の開催日一覧")
     col_day1, col_day2 = st.columns(2)
     with col_day1:
         sat_btn = st.button(f"今週土曜 ({sat_date.strftime('%m/%d')}) 開催一覧", use_container_width=True)
@@ -520,7 +467,7 @@ with tab1:
         if sun_btn: st.session_state['sel_date_type'] = 'sun'
 
     active_dt = sat_date if st.session_state.get('sel_date_type') == 'sat' else sun_date
-    st.markdown(f"##### 📍 選択中: **{active_dt.strftime('%Y年%m月%d日')}** の開催レース")
+    st.markdown(f"**📍 選択中の日付: {active_dt.strftime('%Y年%m月%d日')}**")
     
     st.caption("▼ 競馬場を選択してください")
     v_cols = st.columns(3)
@@ -531,7 +478,7 @@ with tab1:
                 st.session_state['active_venue'] = v_name
     
     cur_v = st.session_state.get('active_venue', '中山')
-    st.markdown(f"###### 🎯 **{cur_v}競馬場 1R〜12R レース選択**")
+    st.markdown(f"**🎯 {cur_v}競馬場 1R〜12R レース選択**")
     
     races_tab1 = generate_jra_race_ids_loop(active_dt.year, cur_v, 4, 8)
     r1_cols = st.columns(6)
@@ -542,7 +489,6 @@ with tab1:
                 st.session_state['active_race_id'] = r['id']
 
 with tab2:
-    st.markdown("#### 🏇 JRA 12桁ID自動計算＆レース選択")
     mc1, mc2 = st.columns(2)
     with mc1:
         sel_year = st.number_input("開催年", 2020, 2026, today_jst.year)
@@ -563,22 +509,26 @@ with tab2:
                 st.session_state['active_race_id'] = r['id']
 
 with tab3:
-    st.markdown("#### 🔢 12桁レースID 直接指定")
     custom_id_input = st.text_input("12桁IDを入力 (例: 202606040811)", value="202606040811")
-    if st.button("🚀 このIDで直接解析"):
+    if st.button("🚀 このIDで解析"):
         st.session_state['active_race_id'] = custom_id_input.strip()
 
 target_race_id = st.session_state.get('active_race_id', '202606040811')
 
-st.markdown("---")
-st.markdown(f"### 📊 AI解析結果 (対象レースID: `{target_race_id}`)")
+# =========================================================
+# 【Step 2】 レース環境 & パドック調整
+# =========================================================
+st.markdown('<div class="step-header">Step 2 🌦 条件・馬場・直前パドック設定</div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# パドック評価入力ツール
-# ---------------------------------------------------------
+c1, c2 = st.columns(2)
+with c1:
+    track_cond = st.selectbox("🌦 馬場状態", ["良", "稍重", "重", "不良"], index=0)
+with c2:
+    sel_pace = st.selectbox("🏃 展開・ペース", ["ミドルペース", "スローペース（前残り）", "ハイペース（差し有利）"], index=0)
+
 paddock_map = {}
 with st.expander("🐴 直前パドック気配・状態補正チェック（タップで展開）", expanded=False):
-    st.caption("パドックで見た気配を選択すると、AIスコアと推奨買い目がリアルタイムで再判定されます。")
+    st.caption("パドック気配を選択すると、AI指数と推奨買い目がリアルタイム再計算されます。")
     p_col1, p_col2 = st.columns(2)
     for u_idx in range(1, 19):
         c_target = p_col1 if u_idx % 2 != 0 else p_col2
@@ -586,127 +536,111 @@ with st.expander("🐴 直前パドック気配・状態補正チェック（タ
             st_select = st.selectbox(f"{u_idx}番 馬気配", ["平行線 (▲)", "絶好調 (◎)", "好調 (◯)", "割引 (×)"], key=f"pad_{u_idx}")
             paddock_map[u_idx] = st_select
 
-# ---------------------------------------------------------
-# データ解析 & カード表示
-# ---------------------------------------------------------
-with st.spinner("出馬表・馬体重・オッズ（確定/暫定）を解析中..."):
+# =========================================================
+# 【Step 3】 AI解析結果 (上位評価馬 & 出馬表 & AIコメント)
+# =========================================================
+st.markdown(f'<div class="step-header">Step 3 📊 AI解析結果 (レースID: {target_race_id})</div>', unsafe_allow_html=True)
+
+with st.spinner("出馬表・馬体重・オッズを解析中..."):
     data_list, err = get_race_data_by_id(target_race_id, paddock_map=paddock_map, track_condition=track_cond, pace_setting=sel_pace)
 
 if err:
     st.error(err)
 elif data_list:
     df = pd.DataFrame(data_list)
-    st.success(f"✅ {len(data_list)}頭の【馬名・騎手・斤量・馬体重・単勝オッズ・人気】を取得完了しました。")
+    st.success(f"✅ {len(data_list)}頭のデータ（馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
 
     honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
     taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
     tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
 
-    # 超目立つグラデーション本命・対抗・単穴カード
+    # 超くっきり見やすいカードデザイン (文字同化ゼロ)
     m1, m2, m3 = st.columns(3)
     with m1:
         st.markdown(f"""
-        <div class="horse-card card-honmei">
-            <span class="badge-honmei">🔥 本命 ◎</span>
-            <div class="horse-name-title">{honmei['馬番']}番 {honmei['馬名']}</div>
-            <div class="stat-badge">🏇 騎手: <b>{honmei['騎手']}</b> ({honmei['斤量']}kg)</div>
-            <div class="stat-badge">💰 単勝: <b>{honmei['単勝オッズ']}倍</b> ({honmei['人気']}人気)</div>
-            <div class="stat-badge">⚖️ 馬体重: <b>{honmei['馬体重']}</b></div>
-            <div class="stat-badge">🚀 AI指数: <b>{honmei['AI指数']}</b> (勝率 {honmei['勝率予測']}%)</div>
+        <div class="card-clean card-honmei">
+            <span class="badge-honmei">本命 ◎</span>
+            <div class="horse-title">{honmei['馬番']}番 {honmei['馬名']}</div>
+            <div class="stat-row">🏇 騎手: {honmei['騎手']} ({honmei['斤量']}kg)</div>
+            <div class="stat-row">💰 単勝オッズ: {honmei['単勝オッズ']}倍 ({honmei['人気']}人気)</div>
+            <div class="stat-row">⚖️ 馬体重: {honmei['馬体重']}</div>
+            <div class="stat-row">🚀 AI指数: <b>{honmei['AI指数']}</b> (勝率 {honmei['勝率予測']}%)</div>
         </div>
         """, unsafe_allow_html=True)
     with m2:
         st.markdown(f"""
-        <div class="horse-card card-taikou">
-            <span class="badge-taikou">⚡ 対抗 ◯</span>
-            <div class="horse-name-title">{taikou['馬番']}番 {taikou['馬名']}</div>
-            <div class="stat-badge">🏇 騎手: <b>{taikou['騎手']}</b> ({taikou['斤量']}kg)</div>
-            <div class="stat-badge">💰 単勝: <b>{taikou['単勝オッズ']}倍</b> ({taikou['人気']}人気)</div>
-            <div class="stat-badge">⚖️ 馬体重: <b>{taikou['馬体重']}</b></div>
-            <div class="stat-badge">🚀 AI指数: <b>{taikou['AI指数']}</b> (勝率 {taikou['勝率予測']}%)</div>
+        <div class="card-clean card-taikou">
+            <span class="badge-taikou">対抗 ◯</span>
+            <div class="horse-title">{taikou['馬番']}番 {taikou['馬名']}</div>
+            <div class="stat-row">🏇 騎手: {taikou['騎手']} ({taikou['斤量']}kg)</div>
+            <div class="stat-row">💰 単勝オッズ: {taikou['単勝オッズ']}倍 ({taikou['人気']}人気)</div>
+            <div class="stat-row">⚖️ 馬体重: {taikou['馬体重']}</div>
+            <div class="stat-row">🚀 AI指数: <b>{taikou['AI指数']}</b> (勝率 {taikou['勝率予測']}%)</div>
         </div>
         """, unsafe_allow_html=True)
     with m3:
         st.markdown(f"""
-        <div class="horse-card card-tanana">
-            <span class="badge-tanana">🌟 単穴 ▲</span>
-            <div class="horse-name-title">{tanana['馬番']}番 {tanana['馬名']}</div>
-            <div class="stat-badge">🏇 騎手: <b>{tanana['騎手']}</b> ({tanana['斤量']}kg)</div>
-            <div class="stat-badge">💰 単勝: <b>{tanana['単勝オッズ']}倍</b> ({tanana['人気']}人気)</div>
-            <div class="stat-badge">⚖️ 馬体重: <b>{tanana['馬体重']}</b></div>
-            <div class="stat-badge">🚀 AI指数: <b>{tanana['AI指数']}</b> (勝率 {tanana['勝率予測']}%)</div>
+        <div class="card-clean card-tanana">
+            <span class="badge-tanana">単穴 ▲</span>
+            <div class="horse-title">{tanana['馬番']}番 {tanana['馬名']}</div>
+            <div class="stat-row">🏇 騎手: {tanana['騎手']} ({tanana['斤量']}kg)</div>
+            <div class="stat-row">💰 単勝オッズ: {tanana['単勝オッズ']}倍 ({tanana['人気']}人気)</div>
+            <div class="stat-row">⚖️ 馬体重: {tanana['馬体重']}</div>
+            <div class="stat-row">🚀 AI指数: <b>{tanana['AI指数']}</b> (勝率 {tanana['勝率予測']}%)</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # 🧠 超目立つAI分析見解ボックス
+    # AI展開見解ボックス
     ai_comment_text = generate_ai_analysis_comment(honmei, taikou, tanana, track_cond, sel_pace)
     st.markdown(f"""
-    <div class="ai-comment-card">
-        <div style="font-weight: 900; font-size: 1.25rem; color: #a5b4fc; margin-bottom: 10px;">🧠 AI総合分析・展開見解コメント</div>
-        <div style="color: #e0e7ff; line-height: 1.6;">{ai_comment_text}</div>
+    <div class="ai-box">
+        <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 6px;">🧠 AI総合分析・展開見解コメント</div>
+        {ai_comment_text}
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------------------------------------------------
-    # 🎫 目立つ全券種対応 資金配分＆オッズシミュレーター
-    # ---------------------------------------------------------
-    st.markdown("---")
-    st.markdown("### 🎰 全券種対応！資金配分＆オッズシミュレーター")
-    
-    b1, b2 = st.columns(2)
-    with b1:
-        st.markdown(f"""
-        <div class="bet-card-pro">
-            <div class="bet-title-pro">🎯 AI推奨買い目 ({selected_ticket})</div>
-            <div class="bet-code-pro">軸: {honmei['馬番']}番 ({honmei['馬名']})
-相手: {taikou['馬番']}, {tanana['馬番']}</div>
-            <div>指定予算: <b style="color: #fbbf24;">{budget:,} 円</b></div>
-        </div>
-        """, unsafe_allow_html=True)
-    with b2:
-        st.markdown(f"""
-        <div class="bet-card-pro">
-            <div class="bet-title-pro">💰 トリガミ防止 資金配分結果</div>
-            <div>推奨投入額: <b style="color: #34d399;">{max(100, int(budget / 3)):,} 円 / 1点</b></div>
-            <div>合成予想回収率: <b style="color: #38bdf8;">142%</b></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # 📊 出馬表 ＆ CSVダウンロード
+    # 全出馬表 & CSVダウンロード
     st.markdown("#### 📋 全出馬表 & AI予想一覧")
     st.dataframe(df, use_container_width=True)
     
     csv_data = df.to_csv(index=False, encoding='utf-8-sig')
     st.download_button(
-        label="📥 このAI予想結果をCSVファイルでダウンロード",
+        label="📥 この予想結果をCSVファイルでダウンロード",
         data=csv_data,
         file_name=f"ai_prediction_{target_race_id}.csv",
         mime="text/csv",
         use_container_width=True
     )
 
-# ---------------------------------------------------------
-# 📝 画面最下部: 馬券収支メモ（折りたたまれずにメイン画面に配置）
-# ---------------------------------------------------------
-st.markdown("---")
-st.markdown("### 📝 馬券収支トータル管理メモ")
-with st.form("balance_form_main"):
-    f1, f2, f3 = st.columns(3)
-    with f1:
-        rec_race_name = st.text_input("レース名/ID", value=f"{target_race_id}")
-    with f2:
-        rec_bet = st.number_input("購入額 (円)", min_value=0, value=1000, step=100)
-    with f3:
-        rec_return = st.number_input("払戻額 (円)", min_value=0, value=0, step=100)
-    btn_add_record = st.form_submit_button("📝 この収支結果をトータル履歴に記録・追加")
-    if btn_add_record:
-        st.session_state['balance_history'].append({
-            "レース": rec_race_name,
-            "投資": rec_bet,
-            "回収": rec_return,
-            "収支": rec_return - rec_bet
-        })
-        st.success("収支履歴に記録しました！")
+    # =========================================================
+    # 【Step 4】 買い目資金配分 & 収支メモ
+    # =========================================================
+    st.markdown('<div class="step-header">Step 4 🎰 買い目資金配分 & 📝 収支メモ</div>', unsafe_allow_html=True)
+    
+    b_col1, b_col2 = st.columns(2)
+    with b_col1:
+        selected_ticket = st.selectbox("🎫 推奨勝馬投票券", ALL_TICKET_TYPES, index=3)
+        budget = st.number_input("💰 総購入予算 (円)", min_value=1000, value=10000, step=1000)
+    with b_col2:
+        st.info(f"**🎯 推奨買い目 ({selected_ticket})**\n軸: {honmei['馬番']}番 ({honmei['馬名']}) / 相手: {taikou['馬番']}, {tanana['馬番']}\n\n**💰 トリガミ防止推奨配分:** {max(100, int(budget / 3)):,} 円 / 1点")
+
+    # 収支記録フォーム
+    st.markdown("#### 📝 このレースの馬券収支を記録")
+    with st.form("balance_form_step4"):
+        f1, f2 = st.columns(2)
+        with f1:
+            rec_bet = st.number_input("購入額 (円)", min_value=0, value=budget, step=100)
+        with f2:
+            rec_return = st.number_input("払戻額 (円)", min_value=0, value=0, step=100)
+        btn_add = st.form_submit_button("📝 トータル収支履歴に追加")
+        if btn_add:
+            st.session_state['balance_history'].append({
+                "レース": f"{target_race_id}",
+                "投資": rec_bet,
+                "回収": rec_return,
+                "収支": rec_return - rec_bet
+            })
+            st.success("収支履歴に記録しました！")
 
 if st.session_state['balance_history']:
     st.markdown("#### 📜 累計収支サマリー")
