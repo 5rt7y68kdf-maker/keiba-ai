@@ -30,7 +30,7 @@ TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "
 # Streamlit Page Config & High-Contrast Light Clean Styling
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Kuina AI Racing Ultimate Pro v39",
+    page_title="Kuina AI Racing Pro",
     page_icon="🏇",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -47,17 +47,19 @@ st.markdown("""
     }
     
     .main-header {
-        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-        border-radius: 12px;
-        padding: 18px;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        padding: 22px 20px;
         text-align: center;
         color: #ffffff;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.2);
+        margin-bottom: 24px;
+        box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
     }
     .main-header h1 {
-        font-size: 1.8rem;
+        font-size: 1.9rem;
         font-weight: 900;
+        letter-spacing: 0.5px;
         margin: 0;
         color: #ffffff;
     }
@@ -454,8 +456,7 @@ if 'active_race_id' not in st.session_state:
 # ---------------------------------------------------------
 st.markdown("""
 <div class="main-header">
-    <h1>🏇 Kuina AI Racing Ultimate Pro</h1>
-    <div>AIオッズ解析・トラックバイアス・複数馬券選択＆資金配分シミュレーション</div>
+    <h1>🏇 Kuina AI Racing Pro</h1>
 </div>
 """, unsafe_allow_html=True)
 
