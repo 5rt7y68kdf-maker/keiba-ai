@@ -205,40 +205,90 @@ def fetch_html(url):
 def fetch_race_list_by_date(dt_str):
     clean_date = re.sub(r'\D', '', str(dt_str))
     if len(clean_date) != 8:
-        return [], "日付は8桁の数字(YYYYMMDD)で指定してください。"
+        return [], '日付は8桁の数字(YYYYMMDD)で指定してください。'
 
-    races = []
-    db_url = f"https://db.netkeiba.com/race/list/{clean_date}/"
-    soup, _ = fetch_html(db_url)
-    if soup:
-        for a in soup.find_all('a'):
+    races_dict = {}
+
+    urls = [
+        f'https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}',
+        f'https://race.netkeiba.com/top/?kaisai_date={clean_date}',
+        f'https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}'
+    ]
+
+    for target_url in urls:
+        soup, _ = fetch_html(target_url)
+        if not soup: continue
+
+        for noisy in soup.select('#SideBar, .PickupRace, .Orepro, #Header, .Header'):
+            noisy.decompose()
+
+        main_box = soup.select_one('div.RaceList_Data') or soup.select_one('div.Race_List') or soup.select_one('div#RaceTopRace') or soup
+
+        for a in main_box.find_all('a'):
             href = a.get('href', '')
-            m = re.search(r'/race/(\d{12})', href)
-            if m:
-                r_id = m.group(1)
-                txt = a.text.strip().replace('\n', ' ')
-                txt = re.sub(r'\s+', ' ', txt)
-                if txt and not any(r['id'] == r_id for r in races):
-                    races.append({'id': r_id, 'name': txt})
+            m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
+            if not m: continue
 
-    if not races:
-        race_url = f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}"
-        soup, _ = fetch_html(race_url)
+            r_id = m.group(1)
+            v_code = r_id[4:6]
+            if v_code not in VENUE_CODE_TO_NAME: continue
+
+            venue_name = VENUE_CODE_TO_NAME[v_code]
+            r_num = int(r_id[10:12])
+
+            raw_text = a.text.strip().replace('\n', ' ')
+            raw_text = re.sub(r'\s+', ' ', raw_text)
+
+            clean_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+            clean_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|予想|俺プロ)', '', clean_name).strip()
+
+            display_title = f'📍【{venue_name} {r_num}R】 {clean_name}' if clean_name and len(clean_name) >= 2 else f'📍【{venue_name} {r_num}R】'
+
+            if r_id not in races_dict or len(display_title) > len(races_dict[r_id]['name']):
+                races_dict[r_id] = {
+                    'id': r_id,
+                    'name': display_title,
+                    'venue': venue_name,
+                    'r_num': r_num
+                }
+
+    if not races_dict:
+        db_url = f'https://db.netkeiba.com/race/list/{clean_date}/'
+        soup, _ = fetch_html(db_url)
         if soup:
-            for a in soup.find_all('a'):
+            main_box = soup.select_one('div.db_main_race_list') or soup.select_one('div#main') or soup
+            for a in main_box.find_all('a'):
                 href = a.get('href', '')
-                m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
+                m = re.search(r'/race/(\d{12})', href)
                 if m:
                     r_id = m.group(1)
-                    txt = a.text.strip().replace('\n', ' ')
-                    txt = re.sub(r'\s+', ' ', txt)
-                    if txt and not any(r['id'] == r_id for r in races):
-                        races.append({'id': r_id, 'name': txt})
+                    v_code = r_id[4:6]
+                    if v_code not in VENUE_CODE_TO_NAME: continue
+                    venue_name = VENUE_CODE_TO_NAME[v_code]
+                    r_num = int(r_id[10:12])
 
-    if not races:
-        return [], f"指定された日付 ({clean_date}) のレースデータは見つかりませんでした。"
+                    raw_text = a.text.strip().replace('\n', ' ')
+                    raw_text = re.sub(r'\s+', ' ', raw_text)
+                    clean_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+                    clean_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|予想|俺プロ)', '', clean_name).strip()
 
+                    display_title = f'📍【{venue_name} {r_num}R】 {clean_name}' if clean_name and len(clean_name) >= 2 else f'📍【{venue_name} {r_num}R】'
+
+                    if r_id not in races_dict:
+                        races_dict[r_id] = {
+                            'id': r_id,
+                            'name': display_title,
+                            'venue': venue_name,
+                            'r_num': r_num
+                        }
+
+    if not races_dict:
+        return [], f'指定された日付 ({clean_date}) の中央競馬(JRA)レースデータは見つかりませんでした。'
+
+    races = list(races_dict.values())
+    races.sort(key=lambda x: x['id'])
     return races, None
+
 
 def parse_db_netkeiba(soup):
     table = soup.select_one('table.race_table_01')
@@ -369,7 +419,7 @@ def parse_race_netkeiba(soup):
         hw_diff = 0
 
         for td in td_list:
-            classes = [cls_name.lower() for cls_name in td.get('class', [])]
+            classes = [c.lower() for c in td.get('class', [])]
             cls_str = ' '.join(classes)
             text = td.text.strip()
 
@@ -435,7 +485,7 @@ def fetch_odds_data(clean_id):
         for r in rows:
             tds = r.find_all(['td', 'th'])
             if len(tds) >= 4:
-                uma_txt = tds.text.strip() if len(tds) > 1 else ''
+                uma_txt = tds[1].text.strip() if len(tds) > 1 else (tds[0].text.strip() if len(tds) > 0 else '')
                 odds_txt = tds[-2].text.strip() if len(tds) > 2 else ''
                 pop_txt = tds[-1].text.strip() if len(tds) > 3 else ''
                 
@@ -834,7 +884,7 @@ st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro</div>', unsafe_all
 tab1, tab2, tab3 = st.tabs(["📅 日付で全レース検索", "⚙️ 競馬場・条件指定", "🔢 12桁ID直接入力"])
 
 target_race_id = None
-today = datetime.date.today()
+today = datetime.datetime.now(JST).date()
 
 with tab1:
     col_d1, col_d2 = st.columns(2)
