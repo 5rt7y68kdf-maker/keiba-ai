@@ -124,6 +124,7 @@ st.markdown("""
         margin-top: 12px;
     }
 
+    /* スマホ・PC共通ボタン調整 */
     .stButton > button {
         width: 100% !important;
         min-height: 48px !important;
@@ -144,7 +145,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -637,6 +638,12 @@ elif data_list:
     </div>
     """, unsafe_allow_html=True)
 
+    # 数値データの小数点第一位（例: 12.3）丸め処理
+    for col in ["AI指数", "勝率予測", "単勝オッズ", "斤量"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='ignore')
+            df[col] = df[col].apply(lambda x: round(float(x), 1) if isinstance(x, (int, float, np.number)) and not pd.isna(x) else x)
+
     # 全出馬表 (一番左が「印」)
     st.markdown("#### 📋 全出馬表 & AI予想一覧 (一番左列がAI印◎◯▲)")
     
@@ -648,7 +655,9 @@ elif data_list:
         elif val == '△': return 'background-color: #e2e8f0; color: #334155;'
         return ''
 
-    st.dataframe(df.style.map(highlight_marks, subset=['印']), use_container_width=True)
+    # 小数点第一位で統一フォーマット表示
+    fmt_dict = {c: "{:.1f}" for c in ["AI指数", "勝率予測", "単勝オッズ", "斤量"] if c in df.columns}
+    st.dataframe(df.style.map(highlight_marks, subset=['印']).format(fmt_dict), use_container_width=True)
     
     csv_data = df.to_csv(index=False, encoding='utf-8-sig')
     st.download_button(
@@ -679,7 +688,7 @@ elif data_list:
         odds_a = float(tanana.get('numeric_odds', 8.0))
         
         synth_inv = (1/odds_h) + (1/odds_t) + (1/odds_a)
-        synth_odds = round(1 / synth_inv, 2) if synth_inv > 0 else 1.5
+        synth_odds = round(1 / synth_inv, 1) if synth_inv > 0 else 1.5
         
         selected_str = "、".join(selected_tickets) if selected_tickets else "選択なし"
         num_tickets = len(selected_tickets) if selected_tickets else 1
