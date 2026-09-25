@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import urllib3
 import streamlit as st
 import datetime
+JST = datetime.timezone(datetime.timedelta(hours=9))
 import pandas as pd
 
 # SSL証明書警告の非表示化
@@ -16,6 +17,7 @@ VENUE_MAP = {
     "阪神": "09", "小倉": "10"
 }
 
+VENUE_CODE_TO_NAME = {v: k for k, v in VENUE_MAP.items()}
 ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
 TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
@@ -42,13 +44,32 @@ st.markdown("""
         font-family: 'Inter', 'Helvetica Neue', Arial, 'Hiragino Sans', sans-serif;
     }
     
-    .hero-title {
-        font-size: 2.3rem;
-        font-weight: 800;
-        color: #1e3a8a;
-        margin-bottom: 1.5rem;
-        letter-spacing: -0.02em;
+    
+    .hero-container {
+        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+        border-radius: 12px;
+        padding: 16px 22px;
+        color: #ffffff;
+        margin-top: 10px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
     }
+    .hero-title {
+        font-size: 1.7rem;
+        font-weight: 900;
+        color: #ffffff;
+        margin: 0;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+    }
+    .hero-sub {
+        font-size: 0.85rem;
+        color: #93c5fd;
+        font-weight: 700;
+        margin-top: 4px;
+        letter-spacing: 0.05em;
+    }
+
 
     /* Horse Card Styling with Full Text Visibility */
     .horse-card {
@@ -205,37 +226,85 @@ def fetch_race_list_by_date(dt_str):
     if len(clean_date) != 8:
         return [], "日付は8桁の数字(YYYYMMDD)で指定してください。"
 
-    races = []
-    db_url = f"https://db.netkeiba.com/race/list/{clean_date}/"
-    soup, _ = fetch_html(db_url)
-    if soup:
-        for a in soup.find_all('a'):
-            href = a.get('href', '')
-            m = re.search(r'/race/(\d{12})', href)
-            if m:
-                r_id = m.group(1)
-                txt = a.text.strip().replace('\n', ' ')
-                txt = re.sub(r'\s+', ' ', txt)
-                if txt and not any(r['id'] == r_id for r in races):
-                    races.append({'id': r_id, 'name': txt})
+    races_dict = {}
 
-    if not races:
-        race_url = f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}"
-        soup, _ = fetch_html(race_url)
+    # 1. race.netkeiba.com を最優先検索（メイン出馬表ブロック限定）
+    urls = [
+        f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}",
+        f"https://race.netkeiba.com/top/?kaisai_date={clean_date}",
+        f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}"
+    ]
+
+    for target_url in urls:
+        soup, _ = fetch_html(target_url)
+        if not soup: continue
+
+        main_box = soup.select_one('div.RaceList_Data') or soup.select_one('div.Race_List') or soup.select_one('div#RaceTopRace') or soup
+
+        for a in main_box.find_all('a'):
+            href = a.get('href', '')
+            m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
+            if not m: continue
+
+            r_id = m.group(1)
+            v_code = r_id[4:6]
+            if v_code not in VENUE_CODE_TO_NAME: continue
+
+            venue_name = VENUE_CODE_TO_NAME[v_code]
+            r_num = int(r_id[10:12])
+
+            raw_text = a.text.strip().replace('\n', ' ')
+            raw_text = re.sub(r'\s+', ' ', raw_text)
+
+            clean_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+            clean_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|予想|俺プロ)', '', clean_name).strip()
+
+            display_title = f"📍【{venue_name} {r_num}R】 {clean_name}" if clean_name and len(clean_name) >= 2 else f"📍【{venue_name} {r_num}R】"
+
+            if r_id not in races_dict or len(display_title) > len(races_dict[r_id]['name']):
+                races_dict[r_id] = {
+                    'id': r_id,
+                    'name': display_title,
+                    'venue': venue_name,
+                    'r_num': r_num
+                }
+
+    # 2. 空の場合のみ db.netkeiba.com のメインエリアのみ検索
+    if not races_dict:
+        db_url = f"https://db.netkeiba.com/race/list/{clean_date}/"
+        soup, _ = fetch_html(db_url)
         if soup:
-            for a in soup.find_all('a'):
+            main_box = soup.select_one('div.db_main_race_list') or soup.select_one('div#main') or soup
+            for a in main_box.find_all('a'):
                 href = a.get('href', '')
-                m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
+                m = re.search(r'/race/(\d{12})', href)
                 if m:
                     r_id = m.group(1)
-                    txt = a.text.strip().replace('\n', ' ')
-                    txt = re.sub(r'\s+', ' ', txt)
-                    if txt and not any(r['id'] == r_id for r in races):
-                        races.append({'id': r_id, 'name': txt})
+                    v_code = r_id[4:6]
+                    if v_code not in VENUE_CODE_TO_NAME: continue
+                    venue_name = VENUE_CODE_TO_NAME[v_code]
+                    r_num = int(r_id[10:12])
 
-    if not races:
-        return [], f"指定された日付 ({clean_date}) のレースデータは見つかりませんでした。"
+                    raw_text = a.text.strip().replace('\n', ' ')
+                    raw_text = re.sub(r'\s+', ' ', raw_text)
+                    clean_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+                    clean_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|予想|俺プロ)', '', clean_name).strip()
 
+                    display_title = f"📍【{venue_name} {r_num}R】 {clean_name}" if clean_name and len(clean_name) >= 2 else f"📍【{venue_name} {r_num}R】"
+
+                    if r_id not in races_dict:
+                        races_dict[r_id] = {
+                            'id': r_id,
+                            'name': display_title,
+                            'venue': venue_name,
+                            'r_num': r_num
+                        }
+
+    if not races_dict:
+        return [], f"指定された日付 ({clean_date}) の中央競馬(JRA)レースデータは見つかりませんでした。"
+
+    races = list(races_dict.values())
+    races.sort(key=lambda x: x['id'])
     return races, None
 
 def parse_db_netkeiba(soup):
@@ -401,11 +470,11 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list.text.strip()
+            txt = td_list[0].text.strip()
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list.text.strip()
+            txt = td_list[1].text.strip()
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -433,7 +502,7 @@ def fetch_odds_data(clean_id):
         for r in rows:
             tds = r.find_all(['td', 'th'])
             if len(tds) >= 4:
-                uma_txt = tds.text.strip() if len(tds) > 1 else ''
+                uma_txt = tds[0].text.strip() if len(tds) > 0 else ''
                 odds_txt = tds[-2].text.strip() if len(tds) > 2 else ''
                 pop_txt = tds[-1].text.strip() if len(tds) > 3 else ''
                 
@@ -827,12 +896,17 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None):
 # ---------------------------------------------------------
 # UI Core Component
 # ---------------------------------------------------------
-st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="hero-container">
+    <div class="hero-title">🏇 Kuina AI Racing Pro</div>
+    <div class="hero-sub">JRA中央競馬 AIレーシング・アナリティクス</div>
+</div>
+""", unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["📅 日付で全レース検索", "⚙️ 競馬場・条件指定", "🔢 12桁ID直接入力"])
 
 target_race_id = None
-today = datetime.date.today()
+today = datetime.datetime.now(JST).date()
 
 with tab1:
     col_d1, col_d2 = st.columns(2)
