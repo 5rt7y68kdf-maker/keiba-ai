@@ -22,7 +22,7 @@ VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
 # ---------------------------------------------------------
-# Streamlit Page Config & Spacious Line-Height Styling
+# Streamlit Page Config & High-Contrast Light Styling
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Kuina AI Racing Pro (JRA中央競馬)",
@@ -33,52 +33,48 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* 画面上部余白：タイトル見切れを完全防止 */
+    /* 画面上部の余白をしっかり確保してタイトル見切れを完全に防止 */
     .block-container {
-        padding-top: 4.2rem !important;
-        padding-bottom: 2.0rem !important;
-        padding-left: 1.2rem !important;
-        padding-right: 1.2rem !important;
-        max-width: 98% !important;
+        padding-top: 3.8rem !important;
+        padding-bottom: 1.5rem !important;
+        padding-left: 1.0rem !important;
+        padding-right: 1.0rem !important;
+        max-width: 99% !important;
     }
-    
     div[data-testid="stVerticalBlock"] {
-        gap: 1.0rem !important;
+        gap: 0.6rem !important;
     }
     
     .stApp {
         background: #f8fafc;
         color: #0f172a;
         font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif;
-        line-height: 1.65 !important; /* 行間隔をしっかり空けて見やすく調整 */
-    }
-    
-    p, span, div {
         line-height: 1.6 !important;
     }
     
-    /* ヒーローヘッダー (十分な余白でタイトル見切れ防止) */
+    /* ヒーローヘッダー (上部に十分なマージンを設けて見切れ防止) */
     .hero-container {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-        border-radius: 12px;
-        padding: 16px 22px;
+        border-radius: 10px;
+        padding: 14px 20px;
         color: #ffffff;
-        margin-top: 10px;
-        margin-bottom: 14px;
-        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.15);
+        margin-top: 8px;
+        margin-bottom: 12px;
+        box-shadow: 0 3px 8px rgba(37, 99, 235, 0.15);
     }
     .hero-title {
-        font-size: 1.8rem;
+        font-size: 1.65rem;
         font-weight: 900;
         color: #ffffff;
         margin: 0;
-        line-height: 1.3 !important;
+        line-height: 1.35;
     }
     .hero-sub {
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         color: #93c5fd;
         font-weight: 700;
         margin-top: 4px;
+        line-height: 1.4;
     }
 
     /* ボタン */
@@ -88,63 +84,65 @@ st.markdown("""
         color: #ffffff !important;
         font-weight: 800 !important;
         font-size: 0.92rem !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
         border: none !important;
         padding: 8px 14px !important;
-        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.18) !important;
+        box-shadow: 0 2px 5px rgba(37, 99, 235, 0.18) !important;
         margin-bottom: 4px !important;
     }
 
-    /* 予想馬カード (行間・パディングをゆったり確保) */
+    /* 予想カード (行間ゆったり・見やすさ重視) */
     .horse-card {
         background: #ffffff;
-        border-radius: 12px;
-        padding: 16px 18px !important;
+        border-radius: 10px;
+        padding: 14px 16px !important;
         border: 1px solid #cbd5e1;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        margin-bottom: 12px !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+        margin-bottom: 10px !important;
         word-break: break-word !important;
         white-space: normal !important;
+        line-height: 1.6 !important;
     }
-    .card-honmei { border-left: 6px solid #dc2626; background: #fff5f5; }
-    .card-taikou { border-left: 6px solid #059669; background: #f0fdf4; }
-    .card-tanana { border-left: 6px solid #2563eb; background: #eff6ff; }
+    .card-honmei { border-left: 5px solid #dc2626; background: #fff5f5; }
+    .card-taikou { border-left: 5px solid #059669; background: #f0fdf4; }
+    .card-tanana { border-left: 5px solid #2563eb; background: #eff6ff; }
 
     .badge-honmei { background: #dc2626; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
     .badge-taikou { background: #059669; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
     .badge-tanana { background: #2563eb; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
 
-    /* 枠番・馬番バッジ (横幅だけをタイトに凝縮) */
+    /* 枠番・馬番バッジの左右幅をタイトに凝縮 */
     .waku-badge {
         display: inline-block;
         background: #334155;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 5px !important;
-        border-radius: 4px;
+        padding: 1px 4px !important;
+        border-radius: 3px;
         font-size: 0.78rem;
-        margin-right: 3px !important;
-        letter-spacing: -0.01em;
+        margin-right: 2px !important;
+        letter-spacing: -0.02em;
     }
     .uma-badge {
         display: inline-block;
         background: #0f172a;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 6px !important;
-        border-radius: 4px;
+        padding: 1px 5px !important;
+        border-radius: 3px;
         font-size: 0.85rem;
-        margin-right: 4px !important;
-        letter-spacing: -0.01em;
+        margin-right: 3px !important;
+        letter-spacing: -0.02em;
     }
 
-    /* 展開・指標・計算カード (読みやすい行間) */
+    /* 展開・指標・計算カード */
     .pace-card {
         background: #ffffff;
         border: 1px solid #cbd5e1;
-        border-radius: 10px;
-        padding: 10px 14px !important;
-        margin-bottom: 8px !important;
+        border-radius: 8px;
+        padding: 10px 12px !important;
+        margin-bottom: 6px !important;
+        line-height: 1.5 !important;
     }
     .pace-title {
         font-weight: 800;
@@ -161,39 +159,40 @@ st.markdown("""
 
     .bet-card, .calc-card, .sim-card {
         background: #ffffff;
-        border-radius: 10px;
-        padding: 14px 16px !important;
+        border-radius: 8px;
+        padding: 12px 14px !important;
         border: 1px solid #cbd5e1;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.02);
         margin-bottom: 8px !important;
+        line-height: 1.5 !important;
     }
     .bet-title {
         font-weight: 700;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         color: #1e40af;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
     .bet-code {
         font-family: monospace;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         background: #f1f5f9;
-        padding: 8px 12px;
-        border-radius: 6px;
+        padding: 6px 10px;
+        border-radius: 4px;
         color: #0f172a;
         font-weight: bold;
         border: 1px solid #cbd5e1;
-        margin: 6px 0;
+        margin: 4px 0;
         white-space: pre-line;
         word-break: break-all;
-        line-height: 1.5 !important;
     }
 
     .metric-container {
         background: #ffffff;
         border: 1px solid #cbd5e1;
-        border-radius: 10px;
+        border-radius: 8px;
         padding: 10px 14px !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        line-height: 1.4 !important;
     }
     .metric-label {
         font-size: 0.76rem;
@@ -201,24 +200,22 @@ st.markdown("""
         font-weight: 700;
     }
     .metric-value {
-        font-size: 1.1rem;
+        font-size: 1.08rem;
         font-weight: 800;
         color: #0f172a;
         margin-top: 2px;
     }
-
     div[data-testid="stDataFrame"] {
-        border-radius: 10px;
+        border-radius: 8px;
         border: 1px solid #cbd5e1;
         background: #ffffff;
     }
     
-    /* 表のセル内余白・行間を適切にして読みやすさを確保 */
+    /* 表（DataFrame）のセル行間とタイトな列幅設定 */
     div[data-testid="stDataFrame"] td, div[data-testid="stDataFrame"] th {
-        padding: 8px 10px !important;
+        padding: 6px 8px !important;
         line-height: 1.5 !important;
     }
-    
     hr {
         margin: 0.8rem 0 !important;
     }
@@ -230,29 +227,29 @@ st.markdown("""
 # ---------------------------------------------------------
 def format_odds_val(val):
     """単勝オッズを小数点第一位までにフォーマット（例: 14.5）"""
-    if val is None or val == "未確定" or val == "":
+    if val is None or val == "未確定" or val == "" or str(val).strip() in ['--', '---.-']:
         return "未確定"
     try:
         f_val = float(val)
         return f"{f_val:.1f}"
     except (ValueError, TypeError):
-        return str(val)
+        return "未確定"
 
 def parse_horse_weight_str(txt):
     if not txt:
         return "計不", 0
     clean_txt = str(txt).strip().replace(' ', '')
-    if not clean_txt or clean_txt in ['--', '計不', '前計不']:
+    if not clean_txt or clean_txt in ['--', '計不', '前計不', '---']:
         return "計不", 0
 
-    m = re.search(r'(\d{3,4})\s*\((\s*([+-]?\d+)\s*)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(\s*([+-]?\d+)\s*\\)', clean_txt)
     if m:
         w_val = m.group(1)
         d_val = int(m.group(2))
         d_str = f"+{d_val}" if d_val > 0 else str(d_val)
         return f"{w_val}kg ({d_str})", d_val
 
-    m_note = re.search(r'(\d{3,4})\s*\((.*)\)', clean_txt)
+    m_note = re.search(r'(\d{3,4})\s*\\((.*)\\)', clean_txt)
     if m_note:
         return f"{m_note.group(1)}kg ({m_note.group(2)})", 0
 
@@ -289,7 +286,7 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
         return "追込"
 
 # ---------------------------------------------------------
-# Web Scraping & Data Fetching
+# Web Scraping & Data Fetching (明日の予想・前日出馬表対応)
 # ---------------------------------------------------------
 def fetch_html(url):
     headers = {
@@ -330,11 +327,14 @@ def extract_race_id_from_input(user_input):
     return None
 
 def fetch_race_list_by_date(dt_str):
+    """日付からJRA公式レース一覧を取得（当日・翌日・前日予想にも完全対応）"""
     clean_date = re.sub(r'\D', '', str(dt_str))
     if len(clean_date) != 8:
         return [], "日付は8桁の数字(YYYYMMDD)で指定してください。"
 
     races_dict = {}
+    
+    # 当日・翌日などの前日出馬表・開催予定は race.netkeiba.com を優先参照
     urls = [
         f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}",
         f"https://db.netkeiba.com/race/list/{clean_date}/"
@@ -372,6 +372,97 @@ def fetch_race_list_by_date(dt_str):
     races = list(races_dict.values())
     races.sort(key=lambda x: x['id'])
     return races, None
+
+def parse_race_netkeiba(soup):
+    """race.netkeiba.com の出馬表 (shutuba.html) パース関数（前日出馬表・明日予想に完全対応）"""
+    rows = soup.select('tr.HorseList') or soup.select('table.ShutubaTable tr') or soup.select('table.Shutuba_Table tr') or soup.select('table.ResultTable tr')
+    if not rows:
+        all_trs = soup.find_all('tr')
+        rows = [tr for tr in all_trs if tr.select_one('a[href*="/horse/"]')]
+
+    if not rows: return []
+
+    data_list = []
+    seen_uma = set()
+    for idx, r in enumerate(rows, start=1):
+        td_list = r.find_all(['td', 'th'])
+        if len(td_list) < 2: continue
+
+        horse_a = r.select_one('a[href*="/horse/"]') or r.select_one('.HorseName a')
+        if not horse_a: continue
+        horse_name = horse_a.text.strip()
+        if not horse_name or horse_name in ['馬名', '競走馬']: continue
+
+        jockey_a = r.select_one('a[href*="/jockey/"]') or r.select_one('.Jockey a')
+        jockey_name = jockey_a.text.strip() if jockey_a else "未定義"
+
+        wakaban, umaban = None, None
+        odds_val = "未確定"
+        pop_val = "未確定"
+        weight_val = 55.0
+        hw_str, hw_diff = "計不", 0
+        passage_txt = ""
+
+        for td in td_list:
+            classes = [c.lower() for c in td.get('class', [])]
+            cls_str = ' '.join(classes)
+            text = td.text.strip()
+
+            m_w = re.search(r'waku(\d)', cls_str)
+            if m_w: wakaban = int(m_w.group(1))
+
+            m_u = re.search(r'umaban(\d+)', cls_str)
+            if m_u: umaban = int(m_u.group(1))
+
+            m_wt = re.search(r'^(4\d|5\d|6\d)(?:\.\d)?$', text)
+            if m_wt:
+                try: weight_val = float(m_wt.group(0))
+                except ValueError: pass
+
+            if 'odds' in cls_str or 'odds' in (td.get('id') or '').lower():
+                m_o = re.search(r'(\d+\.\d+)', text)
+                if m_o:
+                    try: odds_val = round(float(m_o.group(1)), 1)
+                    except ValueError: pass
+
+            if 'popular' in cls_str or 'pop' in cls_str or 'ninki' in cls_str:
+                m_p = re.search(r'(\d+)', text)
+                if m_p:
+                    try: pop_val = int(m_p.group(1))
+                    except ValueError: pass
+
+            if 'past' in cls_str or 'result' in cls_str or 'passage' in cls_str:
+                passage_txt += " " + text
+
+            if 'weight' in cls_str or 'weight' in (td.get('id') or '').lower() or re.search(r'\d{3,4}\s*\(', text):
+                p_str, p_diff = parse_horse_weight_str(text)
+                if p_str != "計不":
+                    hw_str, hw_diff = p_str, p_diff
+
+        if wakaban is None and len(td_list) > 0:
+            txt = td_list[0].text.strip() if len(td_list) > 0 else ""
+            if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
+
+        if umaban is None and len(td_list) > 1:
+            txt = td_list[1].text.strip() if len(td_list) > 1 else ""
+            if txt.isdigit(): umaban = int(txt)
+
+        if umaban is None: umaban = idx
+        if wakaban is None: wakaban = (umaban - 1) // 2 + 1 if umaban <= 16 else 8
+
+        if umaban in seen_uma: continue
+        seen_uma.add(umaban)
+
+        leg_style = infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val)
+
+        data_list.append({
+            '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
+            '騎手': jockey_name, '斤量': weight_val,
+            '単勝オッズ': format_odds_val(odds_val), '人気': pop_val,
+            '脚質': leg_style, '馬体重': hw_str, '体重増減': hw_diff
+        })
+
+    return data_list
 
 def parse_db_netkeiba(soup):
     table = soup.select_one('table.race_table_01')
@@ -480,96 +571,6 @@ def parse_db_netkeiba(soup):
 
     return data_list
 
-def parse_race_netkeiba(soup):
-    rows = soup.select('tr.HorseList') or soup.select('table.ShutubaTable tr') or soup.select('table.Shutuba_Table tr') or soup.select('table.ResultTable tr')
-    if not rows:
-        all_trs = soup.find_all('tr')
-        rows = [tr for tr in all_trs if tr.select_one('a[href*="/horse/"]')]
-
-    if not rows: return []
-
-    data_list = []
-    seen_uma = set()
-    for idx, r in enumerate(rows, start=1):
-        td_list = r.find_all(['td', 'th'])
-        if len(td_list) < 2: continue
-
-        horse_a = r.select_one('a[href*="/horse/"]') or r.select_one('.HorseName a')
-        if not horse_a: continue
-        horse_name = horse_a.text.strip()
-        if not horse_name or horse_name in ['馬名', '競走馬']: continue
-
-        jockey_a = r.select_one('a[href*="/jockey/"]') or r.select_one('.Jockey a')
-        jockey_name = jockey_a.text.strip() if jockey_a else "未定義"
-
-        wakaban, umaban = None, None
-        odds_val = "未確定"
-        pop_val = "未確定"
-        weight_val = 55.0
-        hw_str, hw_diff = "計不", 0
-        passage_txt = ""
-
-        for td in td_list:
-            classes = [c.lower() for c in td.get('class', [])]
-            cls_str = ' '.join(classes)
-            text = td.text.strip()
-
-            m_w = re.search(r'waku(\d)', cls_str)
-            if m_w: wakaban = int(m_w.group(1))
-
-            m_u = re.search(r'umaban(\d+)', cls_str)
-            if m_u: umaban = int(m_u.group(1))
-
-            m_wt = re.search(r'^(4\d|5\d|6\d)(?:\.\d)?$', text)
-            if m_wt:
-                try: weight_val = float(m_wt.group(0))
-                except ValueError: pass
-
-            if 'odds' in cls_str or 'odds' in (td.get('id') or '').lower():
-                m_o = re.search(r'(\d+\.\d+)', text)
-                if m_o:
-                    try: odds_val = round(float(m_o.group(1)), 1)
-                    except ValueError: pass
-
-            if 'popular' in cls_str or 'pop' in cls_str or 'ninki' in cls_str:
-                m_p = re.search(r'(\d+)', text)
-                if m_p:
-                    try: pop_val = int(m_p.group(1))
-                    except ValueError: pass
-
-            if 'past' in cls_str or 'result' in cls_str or 'passage' in cls_str:
-                passage_txt += " " + text
-
-            if 'weight' in cls_str or 'weight' in (td.get('id') or '').lower() or re.search(r'\d{3,4}\s*\(', text):
-                p_str, p_diff = parse_horse_weight_str(text)
-                if p_str != "計不":
-                    hw_str, hw_diff = p_str, p_diff
-
-        if wakaban is None and len(td_list) > 0:
-            txt = td_list.text.strip() if len(td_list) > 0 else ""
-            if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
-
-        if umaban is None and len(td_list) > 1:
-            txt = td_list.text.strip() if len(td_list) > 1 else ""
-            if txt.isdigit(): umaban = int(txt)
-
-        if umaban is None: umaban = idx
-        if wakaban is None: wakaban = (umaban - 1) // 2 + 1 if umaban <= 16 else 8
-
-        if umaban in seen_uma: continue
-        seen_uma.add(umaban)
-
-        leg_style = infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val)
-
-        data_list.append({
-            '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
-            '騎手': jockey_name, '斤量': weight_val,
-            '単勝オッズ': format_odds_val(odds_val), '人気': pop_val,
-            '脚質': leg_style, '馬体重': hw_str, '体重増減': hw_diff
-        })
-
-    return data_list
-
 def fetch_odds_data(clean_id):
     odds_url = f"https://race.netkeiba.com/odds/index.html?type=b1&race_id={clean_id}"
     soup, _ = fetch_html(odds_url)
@@ -627,7 +628,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         
         leg_style = leg_style_overrides.get(uma, d.get('脚質', '先行'))
 
-        # 1. 血統適性 (最大 30pt)
+        # 1. 血統適性 (メインファクター①: 最大 30pt)
         blood_score = 15.0
         blood_comment = "血統標準"
         if race_env['condition'] in ['重', '不良', '稍重']:
@@ -645,7 +646,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
                 blood_score = 22.0
                 blood_comment = "【血統適合】標準良馬場スピード血統"
 
-        # 2. 脚質・展開適合 (最大 35pt)
+        # 2. 脚質・展開適合 (メインファクター②: 最大 35pt)
         pace_score = 20.0
         pace_comment = f"【脚質: {leg_style}】"
 
@@ -677,14 +678,14 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
                 pace_score = 22.0
                 pace_comment += " 標準展開"
 
-        # 3. 馬場適性・トラックバイアス (最大 25pt)
+        # 3. 馬場適性・トラックバイアス (メインファクター③: 最大 25pt)
         bias_score = 15.0
         bias_comment = "馬場フラット"
         if "内伸び" in race_env['bias']:
             if waku in [1, 2, 3] and leg_style in ['逃げ', '先行']:
                 bias_score = 25.0
                 bias_comment = f"【馬場バイアス絶好】内枠{waku}枠＋{leg_style}"
-            elif waku in [1, 2, 3, 4]:
+            elif waku in [1, 2, 3, 4, 5]:
                 bias_score = 18.0
                 bias_comment = f"【馬場バイアス良好】内～中枠{waku}枠"
             else:
@@ -709,7 +710,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         p_status = paddock_status_map.get(uma, "⚪ 普通 (0pt)")
         paddock_score = 7.0 if "絶好調" in p_status else (-4.0 if "太め残り" in p_status else (-5.0 if "テンション高" in p_status else 0.0))
 
-        # 人気・騎手は完全除外
+        # ※ 人気 (pop) および 騎手 (jockey) は加点対象外
         raw_score = blood_score + pace_score + bias_score + hw_score + weight_bonus + paddock_score
         score = round(min(99.9, max(10.0, raw_score)), 1)
 
@@ -741,15 +742,15 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         p_info = item.get('_p_comment', '')
 
         if idx == 0:
-            item['予想根拠'] = f"【絶好の軸馬】血統・脚質・馬場適性の総合評価トップ({item['_raw_score']}pt / 単勝{o_str})。<br>{p_info}。"
+            item['予想根拠'] = f"【絶好の軸馬】血統・脚質・馬場適性の総合評価トップ({item['_raw_score']}pt / 単勝{o_str})。{p_info}。"
         elif idx == 1:
-            item['予想根拠'] = f"【対抗馬】血統・展開の適合度高く本命に迫る評価値({item['_raw_score']}pt)。<br>{p_info}。"
+            item['予想根拠'] = f"【対抗馬】血統・展開の適合度高く本命に迫る評価値({item['_raw_score']}pt)。{p_info}。"
         elif idx == 2:
-            item['予想根拠'] = f"【単穴一発】適性・展開が噛み合えば頭まで狙える注目馬({item['_raw_score']}pt)。<br>{p_info}。"
+            item['予想根拠'] = f"【単穴一発】適性・展開が噛み合えば頭まで狙える注目馬({item['_raw_score']}pt)。{p_info}。"
         elif idx == 3 or idx == 4:
-            item['予想根拠'] = f"【連下候補】馬場・コース適性に勝機。ヒモ押さえ推奨。<br>{p_info}。"
+            item['予想根拠'] = f"【連下候補】馬場・コース適性に勝機。ヒモ押さえ推奨。{p_info}。"
         elif idx == 5:
-            item['予想根拠'] = f"【穴馬特注】血統・展開バイアス適合で爆発力あり。<br>{p_info}。"
+            item['予想根拠'] = f"【穴馬特注】血統・展開バイアス適合で爆発力あり。{p_info}。"
         else:
             item['予想根拠'] = f"静観評価（AIスコア {item['_raw_score']}pt / {p_info}）"
 
@@ -855,28 +856,31 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
     data_list = []
     errors = []
 
-    db_url = f"https://db.netkeiba.com/race/{clean_id}/"
-    soup, err = fetch_html(db_url)
-    if soup: data_list = parse_db_netkeiba(soup)
-    elif err: errors.append(f"DB: {err}")
+    # 明日・当日の開催前レース出馬表は race.netkeiba.com を最優先参照
+    race_urls = [
+        f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}",
+        f"https://race.netkeiba.com/race/result.html?race_id={clean_id}"
+    ]
+    for url in race_urls:
+        soup, err = fetch_html(url)
+        if soup:
+            r_list = parse_race_netkeiba(soup)
+            if r_list:
+                data_list = r_list
+                break
+        elif err: errors.append(f"Race: {err}")
+
+    # データベース過去ログ参照（過去レースの場合のフォールバック）
+    if not data_list:
+        db_url = f"https://db.netkeiba.com/race/{clean_id}/"
+        soup, err = fetch_html(db_url)
+        if soup: data_list = parse_db_netkeiba(soup)
+        elif err: errors.append(f"DB: {err}")
 
     if not data_list:
-        race_urls = [
-            f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}",
-            f"https://race.netkeiba.com/race/result.html?race_id={clean_id}"
-        ]
-        for url in race_urls:
-            soup, err = fetch_html(url)
-            if soup:
-                r_list = parse_race_netkeiba(soup)
-                if r_list:
-                    data_list = r_list
-                    break
-            elif err: errors.append(f"Race: {err}")
+        return None, f"指定されたレースの出馬表データが見つかりませんでした。(試行ID: {clean_id})\n前日オッズ未発表などの場合も出馬表から馬名・脚質・血統を解析します。"
 
-    if not data_list:
-        return None, f"レース出馬表データが見つかりませんでした。(試行ID: {clean_id})"
-
+    # オッズ補強処理
     has_missing = any(d['単勝オッズ'] == "未確定" for d in data_list)
     if has_missing:
         odds_map = fetch_odds_data(clean_id)
@@ -891,16 +895,16 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
     return data_list, None
 
 # ---------------------------------------------------------
-# UI Header (十分な上部余白でタイトル見切れ完全防止)
+# UI Header (見切れ防止のため十分な上部余白確保)
 # ---------------------------------------------------------
 st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🏇 Kuina AI Racing Pro</div>
-    <div class="hero-sub">JRA中央競馬専用・血統＆脚質＆馬場適性メイン AI分析システム</div>
+    <div class="hero-sub">JRA中央競馬専用・血統＆脚質＆馬場適性メイン AI分析システム (当日・明日出馬表対応)</div>
 </div>
 """, unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["📅 JRAレース選択", "🔗 URL/ID入力", "📌 サンプル出馬表"])
+tab1, tab2, tab3 = st.tabs(["📅 JRAレース選択 (当日・明日・過去)", "🔗 URL/ID直接入力", "📌 サンプル出馬表"])
 
 target_race_id = None
 today = datetime.date.today()
@@ -908,10 +912,10 @@ today = datetime.date.today()
 with tab1:
     col_d1, col_d2 = st.columns(2)
     with col_d1:
-        selected_date = st.date_input("開催日を選択:", value=today)
+        selected_date = st.date_input("開催日を選択 (明日や将来の日付も指定可能):", value=today)
         if st.button("🔍 JRAレース一覧を取得"):
             dt_str = selected_date.strftime("%Y%m%d")
-            with st.spinner("出馬表を取得中..."):
+            with st.spinner("JRA公式出馬表を取得中..."):
                 races, err = fetch_race_list_by_date(dt_str)
                 if err: st.error(err)
                 else: st.session_state['fetched_races'] = races
@@ -987,13 +991,13 @@ if target_race_id:
                 else: senko_list.append(label)
 
             pc1, pc2, pc3, pc4 = st.columns(4)
-            with pc1: st.markdown(f'<div class="pace-card"><span class="pace-title pace-nige">🏃 逃げ</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600; line-height:1.5;">{", ".join(nige_list) if nige_list else "なし"}</p></div>', unsafe_allow_html=True)
-            with pc2: st.markdown(f'<div class="pace-card"><span class="pace-title pace-senko">🐎 先行</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600; line-height:1.5;">{", ".join(senko_list) if senko_list else "なし"}</p></div>', unsafe_allow_html=True)
-            with pc3: st.markdown(f'<div class="pace-card"><span class="pace-title pace-sashi">🏇 差し</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600; line-height:1.5;">{", ".join(sashi_list) if sashi_list else "なし"}</p></div>', unsafe_allow_html=True)
-            with pc4: st.markdown(f'<div class="pace-card"><span class="pace-title pace-oikomi">🐎💨 追込</span><p style="font-size:0.85rem; margin-top:4px; font-weight:600; line-height:1.5;">{", ".join(oikomi_list) if oikomi_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc1: st.markdown(f'<div class="pace-card"><span class="pace-title pace-nige">🏃 逃げ</span><p style="font-size:0.85rem; margin-top:2px; font-weight:600;">{", ".join(nige_list) if nige_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc2: st.markdown(f'<div class="pace-card"><span class="pace-title pace-senko">🐎 先行</span><p style="font-size:0.85rem; margin-top:2px; font-weight:600;">{", ".join(senko_list) if senko_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc3: st.markdown(f'<div class="pace-card"><span class="pace-title pace-sashi">🏇 差し</span><p style="font-size:0.85rem; margin-top:2px; font-weight:600;">{", ".join(sashi_list) if sashi_list else "なし"}</p></div>', unsafe_allow_html=True)
+            with pc4: st.markdown(f'<div class="pace-card"><span class="pace-title pace-oikomi">🐎💨 追込</span><p style="font-size:0.85rem; margin-top:2px; font-weight:600;">{", ".join(oikomi_list) if oikomi_list else "なし"}</p></div>', unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 🎯 2. AI選定・上位評価馬 (ゆったり行間)
+            # 🎯 2. AI選定・上位評価馬
             # ---------------------------------------------------------
             st.markdown("##### 🎯 AI選定・上位評価馬 (血統・脚質・馬場適性重視)")
             top_3 = sorted(data, key=lambda x: x.get('AI予想スコア', 0), reverse=True)[:3]
@@ -1012,37 +1016,36 @@ if target_race_id:
                     st.markdown(f"""
                     <div class="horse-card {card_styles[idx]}">
                         <span class="{badges[idx]}">{mark_names[idx]}</span>
-                        <div style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 8px 0 4px 0;">
+                        <div style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin: 6px 0 3px 0;">
                             <span class="waku-badge">{horse['枠番']}枠</span><span class="uma-badge">{horse['馬番']}番</span>{horse['馬名']}
                         </div>
-                        <p style="font-size: 1.0rem; color: #1e3a8a; font-weight: 800; margin-bottom: 4px; line-height: 1.5;">
+                        <p style="font-size: 0.95rem; color: #1e3a8a; font-weight: 800; margin-bottom: 3px;">
                             単勝オッズ: <strong>{o_txt}</strong> ({p_txt})
                         </p>
-                        <p style="color: #2563eb; font-weight: bold; font-size: 0.92rem; margin-bottom: 4px; line-height: 1.5;">
+                        <p style="color: #2563eb; font-weight: bold; font-size: 0.88rem; margin-bottom: 3px;">
                             AI適性スコア: {horse['AI予想スコア']} pt | 騎手: {horse['騎手']}
                         </p>
-                        <p style="color: #059669; font-weight: bold; font-size: 0.88rem; margin-bottom: 4px; line-height: 1.5;">
+                        <p style="color: #059669; font-weight: bold; font-size: 0.85rem; margin-bottom: 3px;">
                             過去脚質: <strong>{horse.get('脚質', '先行')}</strong> | 期待回収率: {horse['期待回収率']}
                         </p>
-                        <p style="margin: 3px 0; color: #334155; font-size: 0.85rem; line-height: 1.5;">
+                        <p style="margin: 2px 0; color: #334155; font-size: 0.82rem;">
                             馬体重: {horse['馬体重']} | 斤量: {horse['斤量']}kg
                         </p>
-                        <p style="margin: 4px 0; color: #047857; font-size: 0.85rem; line-height: 1.5;">
+                        <p style="margin: 3px 0; color: #047857; font-size: 0.82rem;">
                             <strong>血統適性:</strong> {horse['血統適性']}
                         </p>
-                        <p style="margin: 4px 0; color: #1e40af; font-size: 0.85rem; line-height: 1.5;">
+                        <p style="margin: 3px 0; color: #1e40af; font-size: 0.82rem;">
                             <strong>バイアス展開:</strong> {horse['バイアス展開']}
                         </p>
-                        <hr style="margin: 8px 0 !important;">
-                        <p style="font-size: 0.85rem; color: #334155; line-height: 1.6;">
+                        <hr style="margin: 6px 0 !important;">
+                        <p style="font-size: 0.82rem; color: #334155; line-height: 1.5;">
                             <strong>💡 予想根拠:</strong><br>{horse['予想根拠']}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 📋 3. AI予想・全出走馬データ一覧表
-            # (枠・馬番の横幅はスリムに、文字行間は広げて読みやすく)
+            # 📋 3. AI予想・全出走馬データ一覧表 (枠・馬番等の列幅横幅カット＆行間ゆったり)
             # ---------------------------------------------------------
             st.markdown("##### 📋 AI予想・全出走馬データ一覧表")
             
@@ -1061,19 +1064,19 @@ if target_race_id:
                 "予想印": st.column_config.TextColumn("印", width=55),
                 "枠番": st.column_config.NumberColumn("枠", width=45, format="%d"),
                 "馬番": st.column_config.NumberColumn("馬番", width=50, format="%d"),
-                "馬名": st.column_config.TextColumn("馬名", width=120),
+                "馬名": st.column_config.TextColumn("馬名", width=125),
                 "単勝オッズ": st.column_config.TextColumn("オッズ", width=70),
                 "人気": st.column_config.TextColumn("人気", width=55),
                 "脚質": st.column_config.TextColumn("脚質", width=65),
                 "AI予想スコア": st.column_config.NumberColumn("適性pt", width=70, format="%.1f"),
                 "AI想定勝率": st.column_config.TextColumn("勝率", width=65),
                 "期待回収率": st.column_config.TextColumn("回収率", width=70),
-                "騎手": st.column_config.TextColumn("騎手", width=90),
+                "騎手": st.column_config.TextColumn("騎手", width=95),
                 "血統適性": st.column_config.TextColumn("血統適性", width=180),
                 "バイアス展開": st.column_config.TextColumn("バイアス展開", width=200),
                 "馬体重": st.column_config.TextColumn("馬体重", width=90),
                 "パドック評価": st.column_config.TextColumn("パドック", width=110),
-                "予想根拠": st.column_config.TextColumn("予想根拠", width=280)
+                "予想根拠": st.column_config.TextColumn("予想根拠", width=260)
             }
 
             st.dataframe(
@@ -1081,7 +1084,7 @@ if target_race_id:
                 use_container_width=True,
                 column_config=column_config,
                 hide_index=True,
-                height=420
+                height=380
             )
 
             # ---------------------------------------------------------
@@ -1137,9 +1140,9 @@ if target_race_id:
                         st.markdown(f"""
                         <div class="bet-card">
                             <div class="bet-title">{b_name}</div>
-                            <div style="font-size: 0.82rem; color: #64748b;">{b_info['方式']} ({b_info['点数']})</div>
+                            <div style="font-size: 0.78rem; color: #64748b;">{b_info['方式']} ({b_info['点数']})</div>
                             <div class="bet-code">{b_info['買い目']}</div>
-                            <div style="font-size: 0.82rem; color: #475569; line-height: 1.5;">{b_info['解説']}</div>
+                            <div style="font-size: 0.78rem; color: #475569;">{b_info['解説']}</div>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -1199,7 +1202,7 @@ if target_race_id:
                         st.line_chart(hist_df[['日時', '累計損益']].set_index('日時'))
 
                     st.markdown("##### 📜 記録一覧 ＆ 誤入力の個別削除")
-                    st.dataframe(hist_df[['日時', 'レースID', '馬券種', '投資額', '払戻額', '収支', '回収率']], use_container_width=True, height=140)
+                    st.dataframe(hist_df[['日時', 'レースID', '馬券種', '投資額', '払戻額', '収支', '回収率']], use_container_width=True, height=130)
 
                     # 確実に動作する個別削除ロジック
                     record_map = {
