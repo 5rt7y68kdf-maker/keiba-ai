@@ -572,7 +572,7 @@ with st.expander("🐴 直前パドック気配・状態補正チェック（タ
     for u_idx in range(1, 19):
         c_target = p_col1 if u_idx % 2 != 0 else p_col2
         with c_target:
-            st_select = st.selectbox(f"{u_idx}番 馬気配", ["平行線 (▲)", "絶好調 (◎)", "好調 (◯)", "割引 (×)"], key=f`pad_{u_idx}`)
+            st_select = st.selectbox(f"{u_idx}番 馬気配", ["平行線 (▲)", "絶好調 (◎)", "好調 (◯)", "割引 (×)"], key=f"pad_{u_idx}")
             paddock_map[u_idx] = st_select
 
 # ---------------------------------------------------------
@@ -587,9 +587,9 @@ elif data_list:
     df = pd.DataFrame(data_list)
     st.success(f"✅ {len(data_list)}頭の【馬名・騎手・斤量・馬体重・単勝オッズ・人気】を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[0] if len(data_list)>1 else data_list[0])
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[0] if len(data_list)>2 else data_list[0])
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
 
     # 上位3頭カード
     m1, m2, m3 = st.columns(3)
