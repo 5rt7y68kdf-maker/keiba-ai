@@ -883,7 +883,9 @@ st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro</div>', unsafe_all
 
 tab1, tab2, tab3 = st.tabs(["📅 日付で全レース検索", "⚙️ 競馬場・条件指定", "🔢 12桁ID直接入力"])
 
-target_race_id = None
+if 'active_race_id' not in st.session_state:
+    st.session_state['active_race_id'] = None
+
 today = datetime.datetime.now(JST).date()
 
 with tab1:
@@ -902,7 +904,11 @@ with tab1:
             race_options = {f"{r['name']} (ID: {r['id']})": r['id'] for r in st.session_state['fetched_races']}
             selected_race_label = st.selectbox("レースを選択してください:", list(race_options.keys()))
             if selected_race_label:
-                target_race_id = race_options[selected_race_label]
+                st.session_state['active_race_id'] = race_options[selected_race_label]
+        elif 'fetched_races' in st.session_state and not st.session_state['fetched_races']:
+            st.warning("指定された日付のレースは見つかりませんでした。別の開催日をお試しください。")
+        else:
+            st.info("👈 左側で日付を選び、「🔍 レース一覧を取得」を押してください。")
 
 with tab2:
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -915,7 +921,7 @@ with tab2:
     generated_id = f"{year_sel}{VENUE_MAP[venue_sel]}{kai_sel:02d}{nichi_sel:02d}{race_num_sel:02d}"
     st.caption(f"自動生成ID: `{generated_id}`")
     if st.button("🚀 条件指定で解析"):
-        target_race_id = generated_id
+        st.session_state['active_race_id'] = generated_id
 
 with tab3:
     col_a, col_b = st.columns(2)
@@ -923,14 +929,23 @@ with tab3:
         manual_id = st.text_input("12桁レースID:", value="202405021211")
     with col_b:
         st.write("サンプル:")
-        if st.button("📌 日本ダービー"): target_race_id = "202405021211"
+        
 
-    if not target_race_id and manual_id:
-        if st.button("🚀 IDで解析"): target_race_id = manual_id
+    if st.button("📌 日本ダービー"):
+        st.session_state['active_race_id'] = "202405021211"
+
+    if manual_id and st.button("🚀 IDで解析"):
+        st.session_state['active_race_id'] = manual_id
 
 # ---------------------------------------------------------
 # Results Area
 # ---------------------------------------------------------
+target_race_id = st.session_state.get('active_race_id')
+
+if not target_race_id:
+    st.markdown("---")
+    st.info("💡 画面上のタブから「日付検索」「条件指定」または「ID直接入力」を行い、解析ボタンを押すとここにAI予想結果が表示されます。")
+
 if target_race_id:
     st.markdown("---")
     
