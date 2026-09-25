@@ -6,7 +6,11 @@ import streamlit as st
 import datetime
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+try:
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
 import itertools
 
 # SSL証明書警告の非表示化
@@ -772,7 +776,8 @@ elif data_list:
                 margin=dict(l=40, r=40, t=30, b=30),
                 height=380
             )
-            st.plotly_chart(fig_radar, use_container_width=True)
+            if PLOTLY_AVAILABLE:
+                st.plotly_chart(fig_radar, use_container_width=True)
 
     # 数値データの小数点第一位（例: 12.3）丸め処理
     for col in ["AI指数", "勝率予測", "単勝オッズ", "斤量"]:
