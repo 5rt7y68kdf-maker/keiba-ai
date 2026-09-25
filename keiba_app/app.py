@@ -641,7 +641,7 @@ elif data_list:
     # 数値データの小数点第一位（例: 12.3）丸め処理
     for col in ["AI指数", "勝率予測", "単勝オッズ", "斤量"]:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='ignore')
+            df[col] = pd.to_numeric(df[col], errors='coerce')
             df[col] = df[col].apply(lambda x: round(float(x), 1) if isinstance(x, (int, float, np.number)) and not pd.isna(x) else x)
 
     # 全出馬表 (一番左が「印」)
