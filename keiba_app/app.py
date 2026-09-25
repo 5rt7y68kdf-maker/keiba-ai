@@ -524,7 +524,7 @@ with st.expander("🐴 直前パドック気配・状態補正チェック（タ
     st.caption("パドックで見た気配を選択すると、AIスコアと推奨買い目がリアルタイムで再判定されます。")
     p_cols = st.columns(2)
     for u_idx in range(1, 19):
-        c_target = p_cols if u_idx % 2 != 0 else p_cols
+        c_target = p_cols[0] if u_idx % 2 != 0 else p_cols[1]
         with c_target:
             st_select = st.selectbox(f"{u_idx}番 馬気配", ["平行線 (▲)", "絶好調 (◎)", "好調 (◯)", "割引 (×)"], key=f"pad_{u_idx}")
             paddock_map[u_idx] = st_select
