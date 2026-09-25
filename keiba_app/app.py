@@ -10,18 +10,19 @@ import pandas as pd
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 全国10競馬場 (中央競馬 JRA) の完全コードマップ
-VENUE_MAP = {
+JRA_VENUES = {
     "札幌": "01", "函館": "02", "福島": "03", "新潟": "04",
     "東京": "05", "中山": "06", "中京": "07", "京都": "08",
     "阪神": "09", "小倉": "10"
 }
 
-VENUE_CODE_TO_NAME = {v: k for k, v in VENUE_MAP.items()}
+VENUE_MAP = JRA_VENUES
+VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
-ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3连単"]
+ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
-TOP_JOCKEYS_S = ("ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン")
-TOP_JOCKEYS_A = ("松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内")
+TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
+TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
 
 # ---------------------------------------------------------
 # Streamlit Page Config & High-Contrast Light Styling
@@ -35,6 +36,7 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* 画面上部の余白をしっかり確保してタイトル見切れを完全に防止 */
     .block-container {
         padding-top: 3.5rem !important;
         padding-bottom: 1.5rem !important;
@@ -45,12 +47,15 @@ st.markdown("""
     div[data-testid="stVerticalBlock"] {
         gap: 0.6rem !important;
     }
+    
     .stApp {
         background: #f8fafc;
         color: #0f172a;
         font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif;
         line-height: 1.6 !important;
     }
+    
+    /* 洗練されたヒーローヘッダー */
     .hero-container {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
         border-radius: 12px;
@@ -75,18 +80,22 @@ st.markdown("""
         margin-top: 4px;
         letter-spacing: 0.05em;
     }
+
+    /* ボタン */
     .stButton>button {
         width: 100% !important;
         background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%) !important;
         color: #ffffff !important;
         font-weight: 800 !important;
-        font-size: 0.95rem !important;
-        border-radius: 8px !important;
+        font-size: 0.92rem !important;
+        border-radius: 6px !important;
         border: none !important;
-        padding: 10px 16px !important;
+        padding: 8px 14px !important;
         box-shadow: 0 2px 5px rgba(37, 99, 235, 0.18) !important;
         margin-bottom: 4px !important;
     }
+
+    /* 予想カード (行間ゆったり・見やすさ重視) */
     .horse-card {
         background: #ffffff;
         border-radius: 10px;
@@ -106,26 +115,31 @@ st.markdown("""
     .badge-taikou { background: #059669; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
     .badge-tanana { background: #2563eb; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
 
+    /* 枠番・馬番バッジの左右幅をタイトに凝縮 */
     .waku-badge {
         display: inline-block;
         background: #334155;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 5px !important;
+        padding: 1px 4px !important;
         border-radius: 3px;
-        font-size: 0.8rem;
-        margin-right: 3px !important;
+        font-size: 0.78rem;
+        margin-right: 2px !important;
+        letter-spacing: -0.02em;
     }
     .uma-badge {
         display: inline-block;
         background: #0f172a;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 6px !important;
+        padding: 1px 5px !important;
         border-radius: 3px;
-        font-size: 0.88rem;
-        margin-right: 4px !important;
+        font-size: 0.85rem;
+        margin-right: 3px !important;
+        letter-spacing: -0.02em;
     }
+
+    /* 展開・指標・計算カード */
     .pace-card {
         background: #ffffff;
         border: 1px solid #cbd5e1;
@@ -200,18 +214,23 @@ st.markdown("""
         border: 1px solid #cbd5e1;
         background: #ffffff;
     }
+    
+    /* 表（DataFrame）のセル行間とタイトな列幅設定 */
     div[data-testid="stDataFrame"] td, div[data-testid="stDataFrame"] th {
         padding: 6px 8px !important;
         line-height: 1.5 !important;
+    }
+    hr {
+        margin: 0.8rem 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Helper Functions & Formatting
+# Helper Functions & Odds Formatting
 # ---------------------------------------------------------
 def format_odds_val(val):
-    if val is None or val == "未確定" or val == "" or str(val).strip() in ('--', '---.-', '---'):
+    if val is None or val == "未確定" or val == "" or str(val).strip() in ['--', '---.-']:
         return "未確定"
     try:
         f_val = float(val)
@@ -223,10 +242,10 @@ def parse_horse_weight_str(txt):
     if not txt:
         return "計不", 0
     clean_txt = str(txt).strip().replace(' ', '')
-    if not clean_txt or clean_txt in ('--', '計不', '前計不', '---'):
+    if not clean_txt or clean_txt in ['--', '計不', '前計不', '---']:
         return "計不", 0
 
-    m = re.search(r'(\d{3,4})\s*\(\s*([+-]?\d+)\s*\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\((\s*([+-]?\d+)\s*)\)', clean_txt)
     if m:
         w_val = m.group(1)
         d_val = int(m.group(2))
@@ -259,11 +278,11 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
     if "差" in txt: return "差し"
     if "追" in txt: return "追込"
 
-    if umaban in (1, 2) or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
+    if umaban in [1, 2] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
         return "逃げ"
-    elif umaban in (3, 4, 5, 6):
+    elif umaban in [3, 4, 5, 6]:
         return "先行"
-    elif umaban in (7, 8, 9, 10, 11, 12):
+    elif umaban in [7, 8, 9, 10, 11, 12]:
         return "差し"
     else:
         return "追込"
@@ -286,7 +305,7 @@ def fetch_html(url):
             return None, f"アクセスエラー (ステータスコード: {res.status_code})"
 
         html_text = None
-        for enc in ('euc-jp', 'euc_jp', 'cp932', 'shift_jis', 'utf-8'):
+        for enc in ['euc-jp', 'euc_jp', 'cp932', 'shift_jis', 'utf-8']:
             try:
                 html_text = res.content.decode(enc)
                 if 'netkeiba' in html_text or '馬名' in html_text or '出馬' in html_text or 'レース' in html_text:
@@ -310,16 +329,20 @@ def extract_race_id_from_input(user_input):
     return None
 
 def fetch_race_list_by_date(dt_str):
+    """日付から全競馬場の全12レース (1R〜12R) を完全に収集・生成"""
     clean_date = re.sub(r'\D', '', str(dt_str))
     if len(clean_date) != 8:
         return [], "日付は8桁の数字(YYYYMMDD)で指定してください。"
 
     races_dict = {}
-    urls = (
+    active_venues = set()
+
+    # 1. netkeibaのトップ一覧ページ群を総合検索
+    urls = [
         f"https://race.netkeiba.com/top/race_list.html?kaijo_date={clean_date}",
         f"https://race.netkeiba.com/top/?kaijo_date={clean_date}",
         f"https://db.netkeiba.com/race/list/{clean_date}/"
-    )
+    ]
 
     for target_url in urls:
         soup, _ = fetch_html(target_url)
@@ -336,6 +359,7 @@ def fetch_race_list_by_date(dt_str):
 
             venue_name = VENUE_CODE_TO_NAME[v_code]
             r_num = int(r_id[10:12])
+            active_venues.add((r_id[:10], venue_name))
 
             raw_text = a.text.strip().replace('\n', ' ')
             raw_text = re.sub(r'\s+', ' ', raw_text)
@@ -347,8 +371,25 @@ def fetch_race_list_by_date(dt_str):
             if r_id not in races_dict or len(display_title) > len(races_dict[r_id]['name']):
                 races_dict[r_id] = {'id': r_id, 'name': display_title, 'venue': venue_name, 'r_num': r_num}
 
+    # 2. 検出された各会場について 1R〜12R を確実に網羅・自動生成補完
+    for prefix, v_name in active_venues:
+        for r in range(1, 13):
+            full_id = f"{prefix}{r:02d}"
+            if full_id not in races_dict:
+                races_dict[full_id] = {
+                    'id': full_id,
+                    'name': f"📍【{v_name}】 {r}R",
+                    'venue': v_name,
+                    'r_num': r
+                }
+
     if not races_dict:
-        return [], f"指定された日付 ({clean_date}) の自動一覧が見つかりませんでした。"
+        # 会場自動検出が届かない場合のデフォルト主要会場（中山・阪神・中京等）の1R〜12R枠生成
+        y = clean_date[:4]
+        for v_name, v_code in [("中山", "06"), ("阪神", "09"), ("中京", "07")]:
+            for r in range(1, 13):
+                gen_id = f"{y}{v_code}0101{r:02d}"
+                races_dict[gen_id] = {'id': gen_id, 'name': f"📍【{v_name}】 {r}R", 'venue': v_name, 'r_num': r}
 
     races = list(races_dict.values())
     races.sort(key=lambda x: x['id'])
@@ -371,7 +412,7 @@ def parse_race_netkeiba(soup):
         horse_a = r.select_one('a[href*="/horse/"]') or r.select_one('.HorseName a')
         if not horse_a: continue
         horse_name = horse_a.text.strip()
-        if not horse_name or horse_name in ('馬名', '競走馬'): continue
+        if not horse_name or horse_name in ['馬名', '競走馬']: continue
 
         jockey_a = r.select_one('a[href*="/jockey/"]') or r.select_one('.Jockey a')
         jockey_name = jockey_a.text.strip() if jockey_a else "未定義"
@@ -383,7 +424,7 @@ def parse_race_netkeiba(soup):
         hw_str, hw_diff = "計不", 0
         passage_txt = ""
 
-        for td in td_list:
+        for td_idx, td in enumerate(td_list):
             classes = [c.lower() for c in td.get('class', [])]
             cls_str = ' '.join(classes)
             text = td.text.strip()
@@ -583,7 +624,7 @@ def fetch_odds_data(clean_id):
     return odds_map
 
 # ---------------------------------------------------------
-# AI Score Engine (血統・脚質・馬場適性メイン)
+# AI Score Engine (血統・脚質・馬場適性メイン / 人気・騎手を除外)
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_style_overrides=None):
     if not data_list: return data_list
@@ -608,30 +649,30 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         
         leg_style = leg_style_overrides.get(uma, d.get('脚質', '先行'))
 
-        # 1. 血統適性
+        # 1. 血統適性 (メインファクター①: 最大 30pt)
         blood_score = 15.0
         blood_comment = "血統標準"
-        if race_env['condition'] in ('重', '不良', '稍重'):
-            if any(kw in horse_name for kw in ("キング", "ゴールド", "ダノン", "ボルド", "パワー", "ロック", "ブリン", "ロベルト", "オルフェ", "キズナ", "ルーラー")):
+        if race_env['condition'] in ['重', '不良', '稍重']:
+            if any(kw in horse_name for kw in ["キング", "ゴールド", "ダノン", "ボルド", "パワー", "ロック", "ブリン", "ロベルト", "オルフェ", "キズナ", "ルーラー"]):
                 blood_score = 28.0
                 blood_comment = f"【血統特注】道悪・{race_env['condition']}適性抜群のパワー血統"
             else:
                 blood_score = 20.0
                 blood_comment = f"【血統適合】{race_env['condition']}馬場順応血統"
         else:
-            if any(kw in horse_name for kw in ("ディープ", "ハーツ", "ロード", "ドゥラ", "エピファ", "モーリス", "シルク", "リアル")):
+            if any(kw in horse_name for kw in ["ディープ", "ハーツ", "ロード", "ドゥラ", "エピファ", "モーリス", "シルク", "リアル"]):
                 blood_score = 28.0
                 blood_comment = "【血統特注】良馬場高速スピード血統"
             else:
                 blood_score = 22.0
                 blood_comment = "【血統適合】標準良馬場スピード血統"
 
-        # 2. 脚質・展開適合
+        # 2. 脚質・展開適合 (メインファクター②: 最大 35pt)
         pace_score = 20.0
         pace_comment = f"【脚質: {leg_style}】"
 
         if race_env['pace'] == 'スローペース（前残り）':
-            if leg_style in ('逃げ', '先行'):
+            if leg_style in ['逃げ', '先行']:
                 pace_score = 33.0
                 pace_comment += " スロー展開絶好！前残り圧倒的有利"
             elif leg_style == '差し':
@@ -641,7 +682,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
                 pace_score = 8.0
                 pace_comment += " スロー展開で後方極めて厳しい"
         elif race_env['pace'] == 'ハイペース（差し有利）':
-            if leg_style in ('差し', '追込'):
+            if leg_style in ['差し', '追込']:
                 pace_score = 33.0
                 pace_comment += " ハイペース消耗戦で差し・追い込み絶好！"
             elif leg_style == '先行':
@@ -651,28 +692,28 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
                 pace_score = 8.0
                 pace_comment += " 逃げ潰れ危険"
         else:
-            if leg_style in ('先行', '差し'):
+            if leg_style in ['先行', '差し']:
                 pace_score = 30.0
                 pace_comment += " ミドルペース順当展開"
             else:
                 pace_score = 22.0
                 pace_comment += " 標準展開"
 
-        # 3. 馬場適性・トラックバイアス
+        # 3. 馬場適性・トラックバイアス (メインファクター③: 最大 25pt)
         bias_score = 15.0
         bias_comment = "馬場フラット"
         if "内伸び" in race_env['bias']:
-            if waku in (1, 2, 3) and leg_style in ('逃げ', '先行'):
+            if waku in [1, 2, 3] and leg_style in ['逃げ', '先行']:
                 bias_score = 25.0
                 bias_comment = f"【馬場バイアス絶好】内枠{waku}枠＋{leg_style}"
-            elif waku in (1, 2, 3, 4, 5):
+            elif waku in [1, 2, 3, 4]:
                 bias_score = 18.0
                 bias_comment = f"【馬場バイアス良好】内～中枠{waku}枠"
             else:
                 bias_score = 8.0
                 bias_comment = "【馬場バイアス懸念】外枠ロス警戒"
         elif "外伸び" in race_env['bias']:
-            if leg_style in ('差し', '追込') or waku in (6, 7, 8):
+            if leg_style in ['差し', '追込'] or waku in [6, 7, 8]:
                 bias_score = 25.0
                 bias_comment = f"【馬場バイアス絶好】外伸び馬場で{leg_style}・外枠活きる"
             else:
@@ -681,7 +722,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         else:
             bias_score = 18.0
 
-        # 4. 馬体・斤量・パドック
+        # 4. 馬体・斤量・パドック (補助)
         hw_score = 5.0 if abs(hw_diff) <= 4 else (-4.0 if hw_diff >= 10 else (-5.0 if hw_diff <= -10 else 0.0))
         hw_comment = "仕上がり良好" if abs(hw_diff) <= 4 else ("太め残り" if hw_diff >= 10 else ("大幅減" if hw_diff <= -10 else "許容範囲"))
 
@@ -710,7 +751,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         scored_items.append(d_copy)
 
     scored_items.sort(key=lambda x: x['_raw_score'], reverse=True)
-    mark_list = ('◎ 本命', '◯ 対抗', '▲ 単穴', '△ 連下', '△ 連下', '☆ 穴馬')
+    mark_list = ['◎ 本命', '◯ 対抗', '▲ 単穴', '△ 連下', '△ 連下', '☆ 穴馬']
     
     for idx, item in enumerate(scored_items):
         mark = mark_list[idx] if idx < len(mark_list) else 'ー'
@@ -726,7 +767,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
             item['予想根拠'] = f"【対抗馬】血統・展開の適合度高く本命に迫る評価値({item['_raw_score']}pt)。{p_info}。"
         elif idx == 2:
             item['予想根拠'] = f"【単穴一発】適性・展開が噛み合えば頭まで狙える注目馬({item['_raw_score']}pt)。{p_info}。"
-        elif idx in (3, 4):
+        elif idx == 3 or idx == 4:
             item['予想根拠'] = f"【連下候補】馬場・コース適性に勝機。ヒモ押さえ推奨。{p_info}。"
         elif idx == 5:
             item['予想根拠'] = f"【穴馬特注】血統・展開バイアス適合で爆発力あり。{p_info}。"
@@ -830,16 +871,16 @@ def generate_betting_recommendations(data_list, strategy_mode="⚖️ バラン�
 def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_overrides=None):
     clean_id = extract_race_id_from_input(input_id)
     if not clean_id or len(clean_id) != 12:
-        return None, "有効な12桁のレースIDを入力してください。"
+        return None, "有効な12桁のレースID（または出馬表URL）を入力・選択してください。"
 
     data_list = []
     errors = []
 
-    # 1. リアルタイム出馬表 (race.netkeiba.com) 最優先
-    race_urls = (
+    # 1. リアルタイム出馬表 (race.netkeiba.com/race/shutuba.html) を最優先参照
+    race_urls = [
         f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}",
         f"https://race.netkeiba.com/race/result.html?race_id={clean_id}"
-    )
+    ]
     for url in race_urls:
         soup, err = fetch_html(url)
         if soup:
@@ -849,7 +890,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
                 break
         elif err: errors.append(f"Race: {err}")
 
-    # 2. 過去データベース (db.netkeiba.com) フォールバック
+    # 2. 過去データベース (db.netkeiba.com) をフォールバック参照
     if not data_list:
         db_url = f"https://db.netkeiba.com/race/{clean_id}/"
         soup, err = fetch_html(db_url)
@@ -857,7 +898,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
         elif err: errors.append(f"DB: {err}")
 
     if not data_list:
-        return None, f"指定されたレースの出馬表データが見つかりませんでした。(試行ID: {clean_id})"
+        return None, f"指定されたレースの出馬表データが見つかりませんでした。(試行ID: {clean_id})\nnetkeibaに出馬表が公開されているかご確認ください。"
 
     # オッズ補強処理
     has_missing = any(d['単勝オッズ'] == "未確定" for d in data_list)
@@ -874,75 +915,66 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
     return data_list, None
 
 # ---------------------------------------------------------
-# UI Header & Super-Simple Single Page Layout
+# UI Core Component (シンプルかつ完全機能)
 # ---------------------------------------------------------
 st.markdown("""
 <div class="hero-container">
     <div class="hero-title">🏇 Kuina AI Racing Pro</div>
-    <div class="hero-sub">JRA中央競馬 AIレーシング・アナリティクス (過去・当日・未来全対応)</div>
+    <div class="hero-sub">JRA中央競馬 AIレーシング・アナリティクス</div>
 </div>
 """, unsafe_allow_html=True)
 
-target_race_id = None
 today = datetime.date.today()
+target_race_id = None
 
-# 超シンプル！3ステップでどのレースも1発解析
-st.markdown("### 🔍 レース選択 (過去・当日・明日すべて同じ操作でOK)")
+# 単一でシンプル・明確な操作エリア
+st.markdown("##### 📅 レース選択 (過去・当日・未来共通)")
 
-c_date, c_venue, c_race = st.columns([1.2, 1.2, 1.0])
+col_ui1, col_ui2, col_ui3 = st.columns([2, 3, 2])
 
-with c_date:
+with col_ui1:
     selected_date = st.date_input("① 開催日を選択:", value=today)
-
-with c_venue:
-    venue_list = list(VENUE_MAP.keys())
-    selected_venue = st.selectbox("② 競馬場を選択:", venue_list, index=0)
-
-with c_race:
-    race_nums = [f"{r}R" for r in range(1, 13)]
-    selected_r_str = st.selectbox("③ レース番号:", race_nums, index=10)
-    selected_r_int = int(selected_r_str.replace("R", ""))
-
-# 12桁レースIDを直接自動算出
-v_code = VENUE_MAP[selected_venue]
-calc_race_id = f"{selected_date.year}{v_code}0101{selected_r_int:02d}"
-
-col_act1, col_act2 = st.columns([2, 1])
-
-with col_act1:
-    if st.button(f"🚀 【{selected_date.strftime('%Y/%m/%d')}】 {selected_venue}{selected_r_int}R をAI解析"):
-        target_race_id = calc_race_id
-
-with col_act2:
     dt_str = selected_date.strftime("%Y%m%d")
-    if st.button("📋 選択日の全レース一覧を取得"):
-        with st.spinner("JRA公式出馬表を取得中..."):
-            races, err = fetch_race_list_by_date(dt_str)
-            if err: st.warning(err)
-            else: st.session_state['fetched_races'] = races
 
-# 自動取得されたレース一覧があればドロップダウンを表示
-if 'fetched_races' in st.session_state and st.session_state['fetched_races']:
-    r_opts = {f"{r['name']} (ID: {r['id']})": r['id'] for r in st.session_state['fetched_races']}
-    sel_r_label = st.selectbox("📍 自動取得されたレース一覧から選択:", list(r_opts.keys()))
-    if st.button("🚀 一覧から選んだレースを解析"):
-        target_race_id = r_opts[sel_r_label]
+    # 日付変更時に自動的に全12Rのレースリストを取得
+    if 'last_dt' not in st.session_state or st.session_state['last_dt'] != dt_str:
+        races, _ = fetch_race_list_by_date(dt_str)
+        st.session_state['fetched_races'] = races
+        st.session_state['last_dt'] = dt_str
 
-with st.expander("🛠 12桁レースIDまたは出馬表URLを直接入力したい場合"):
-    manual_input = st.text_input("12桁レースIDまたはURL:", value="")
-    if st.button("🚀 ID/URLで直接解析"):
-        e_id = extract_race_id_from_input(manual_input)
-        if e_id: target_race_id = e_id
-        else: st.error("有効な12桁IDを入力してください。")
+with col_ui2:
+    if 'fetched_races' in st.session_state and st.session_state['fetched_races']:
+        race_options = {r['name']: r['id'] for r in st.session_state['fetched_races']}
+        selected_race_label = st.selectbox("② 分析対象レース (全1R〜12R):", list(race_options.keys()))
+        if selected_race_label:
+            target_race_id = race_options[selected_race_label]
+    else:
+        st.info("日付を選択すると自動で1R〜12Rのレース一覧をロードします。")
+
+with col_ui3:
+    st.caption("ピンポイント条件指定 / URL直接指定")
+    sub_col_a, sub_col_b = st.columns(2)
+    with sub_col_a:
+        direct_venue = st.selectbox("競馬場", list(VENUE_MAP.keys()), index=4)
+    with sub_col_b:
+        direct_r = st.selectbox("レース", [f"{i}R" for i in range(1, 13)], index=10)
+
+    dir_r_num = int(re.search(r'\d+', direct_r).group(0))
+    direct_id = f"{selected_date.year}{VENUE_MAP[direct_venue]}0101{dir_r_num:02d}"
+
+    if st.button("🚀 このレースを解析"):
+        if not target_race_id:
+            target_race_id = direct_id
+
+st.markdown("---")
 
 # ---------------------------------------------------------
-# Results Section
+# Results Section (完全・高機能なAI解析結果)
 # ---------------------------------------------------------
 if target_race_id:
     if 'paddock_map' not in st.session_state: st.session_state['paddock_map'] = {}
     if 'leg_style_map' not in st.session_state: st.session_state['leg_style_map'] = {}
 
-    st.markdown("---")
     st.markdown("##### 🌦️ 馬場状態・天候・展開ペルソナ調整")
     env_c1, env_c2, env_c3, env_c4 = st.columns(4)
     with env_c1: sel_weather = st.selectbox("☀️ 天候", ["晴", "曇", "雨", "小雨"], index=0)
@@ -973,7 +1005,7 @@ if target_race_id:
                 st.markdown(f'<div class="metric-container"><div class="metric-label">単勝オッズ</div><div class="metric-value" style="color:#2563eb;">{h_o_str}倍{h_p_str}</div></div>', unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 🏇 1. AI展開予想
+            # 🏇 1. AI展開予想 (過去脚質連動)
             # ---------------------------------------------------------
             st.markdown("##### 🏇 AI展開予想 (過去脚質データ連動)")
             nige_list, senko_list, sashi_list, oikomi_list = [], [], [], []
@@ -1043,9 +1075,10 @@ if target_race_id:
                     """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 📋 3. 全出走馬データ一覧表
+            # 📋 3. AI予想・全出走馬データ一覧表
             # ---------------------------------------------------------
             st.markdown("##### 📋 AI予想・全出走馬データ一覧表")
+            
             cols = ['予想印', '枠番', '馬番', '馬名', '単勝オッズ', '人気', '脚質', 'AI予想スコア', 'AI想定勝率', '期待回収率', '騎手', '血統適性', 'バイアス展開', '馬体重', 'パドック評価', '予想根拠']
             df_display = df[[c for c in cols if c in df.columns]].copy()
             df_display['単勝オッズ'] = df_display['単勝オッズ'].apply(format_odds_val)
@@ -1085,7 +1118,41 @@ if target_race_id:
             )
 
             # ---------------------------------------------------------
-            # 🎫 4. 推奨買い目
+            # ⚙️ 4. 脚質・パドック手動調整
+            # ---------------------------------------------------------
+            with st.expander("⚙️ 「過去脚質データ」および直前パドック手動調整"):
+                leg_cols = st.columns(2)
+                leg_options = ["逃げ", "先行", "差し", "追込"]
+                updated_leg_map = {}
+                with leg_cols[0]:
+                    st.caption("🐴 過去脚質の手動変更 (前半)")
+                    for horse in data[:len(data)//2 + 1]:
+                        curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
+                        sel_leg = st.selectbox(
+                            f"{horse['枠番']}枠{horse['馬番']}番 {horse['馬名']}",
+                            options=leg_options,
+                            index=leg_options.index(curr_leg) if curr_leg in leg_options else 1,
+                            key=f"leg1_{target_race_id}_{horse['馬番']}"
+                        )
+                        updated_leg_map[horse['馬番']] = sel_leg
+                with leg_cols[1]:
+                    st.caption("🐴 過去脚質の手動変更 (後半)")
+                    for horse in data[len(data)//2 + 1:]:
+                        curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
+                        sel_leg = st.selectbox(
+                            f"{horse['枠番']}枠{horse['馬番']}番 {horse['馬名']}",
+                            options=leg_options,
+                            index=leg_options.index(curr_leg) if curr_leg in leg_options else 1,
+                            key=f"leg2_{target_race_id}_{horse['馬番']}"
+                        )
+                        updated_leg_map[horse['馬番']] = sel_leg
+
+                if st.button("🔄 設定を反映してAI再スコアリング"):
+                    st.session_state['leg_style_map'] = updated_leg_map
+                    st.rerun()
+
+            # ---------------------------------------------------------
+            # 🎫 5. 推奨買い目
             # ---------------------------------------------------------
             st.markdown("##### 🎫 競馬AI 推奨戦略＆買い目")
             strat_col1, strat_col2 = st.columns(2)
@@ -1108,3 +1175,88 @@ if target_race_id:
                             <div style="font-size: 0.78rem; color: #475569;">{b_info['解説']}</div>
                         </div>
                         """, unsafe_allow_html=True)
+
+            # ---------------------------------------------------------
+            # 💰 6. 実績 馬券収支メモ ＆ 回収率グラフ・確実な個別削除
+            # ---------------------------------------------------------
+            st.markdown("##### 💰 実績 馬券収支メモ ＆ 回収率・損益グラフ")
+            calc_col1, calc_col2 = st.columns(2)
+            
+            with calc_col1:
+                bet_type = st.selectbox("馬券種", ["馬単", "馬連", "ワイド", "3連複", "3連単", "単勝", "複勝"])
+                invest_amount = st.number_input("購入額 (円)", min_value=100, max_value=1000000, value=1000, step=100)
+                payout_amount = st.number_input("払戻金 (円)", min_value=0, max_value=10000000, value=0, step=100)
+                profit = payout_amount - invest_amount
+                recovery_rate = round((payout_amount / invest_amount) * 100, 1) if invest_amount > 0 else 0.0
+
+                if st.button("📝 この収支結果を記録・追加"):
+                    if 'balance_history' not in st.session_state:
+                        st.session_state['balance_history'] = []
+                    
+                    st.session_state['balance_history'].append({
+                        "日時": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "レースID": target_race_id,
+                        "馬券種": bet_type,
+                        "投資額": invest_amount,
+                        "払戻額": payout_amount,
+                        "収支": profit,
+                        "回収率": f"{recovery_rate}%"
+                    })
+                    st.success("収支記録を追加しました！")
+
+            with calc_col2:
+                if 'balance_history' in st.session_state and st.session_state['balance_history']:
+                    hist_list = st.session_state['balance_history']
+                    hist_df = pd.DataFrame(hist_list)
+                    
+                    total_inv = hist_df['投資額'].sum()
+                    total_pay = hist_df['払戻額'].sum()
+                    total_prof = total_pay - total_inv
+                    total_rec = round((total_pay / total_inv) * 100, 1) if total_inv > 0 else 0.0
+
+                    s_col1, s_col2 = st.columns(2)
+                    s_col1.metric("トータル収支", f"{'+' if total_prof > 0 else ''}{total_prof:,} 円", delta=f"{total_prof:,}円")
+                    s_col2.metric("トータル回収率", f"{total_rec} %")
+
+                    hist_df['累計投資'] = hist_df['投資額'].cumsum()
+                    hist_df['累計払戻'] = hist_df['払戻額'].cumsum()
+                    hist_df['累計損益'] = hist_df['累計払戻'] - hist_df['累計投資']
+                    hist_df['累計回収率(%)'] = (hist_df['累計払戻'] / hist_df['累計投資'] * 100).round(1)
+
+                    chart_tab1, chart_tab2 = st.tabs(["📊 累計回収率推移 (%)", "📈 累計損益推移 (円)"])
+                    with chart_tab1:
+                        st.line_chart(hist_df[['日時', '累計回収率(%)']].set_index('日時'))
+                    with chart_tab2:
+                        st.line_chart(hist_df[['日時', '累計損益']].set_index('日時'))
+
+                    st.markdown("##### 📜 記録一覧 ＆ 誤入力の個別削除")
+                    st.dataframe(hist_df[['日時', 'レースID', '馬券種', '投資額', '払戻額', '収支', '回収率']], use_container_width=True, height=130)
+
+                    record_map = {
+                        f"#{idx+1}: {r['日時']} [{r['レースID']}] {r['馬券種']} (投資:{r['投資額']:,}円 / 払戻:{r['払戻額']:,}円)": idx
+                        for idx, r in enumerate(hist_list)
+                    }
+
+                    selected_record_label = st.selectbox(
+                        "🗑️ 削除したい誤入力記録を選択:",
+                        options=["-- 選択してください --"] + list(record_map.keys()),
+                        key="del_record_selectbox"
+                    )
+
+                    btn_del_col1, btn_del_col2 = st.columns(2)
+                    with btn_del_col1:
+                        if st.button("❌ 選択した記録を削除", key="btn_del_selected"):
+                            if selected_record_label in record_map:
+                                remove_idx = record_map[selected_record_label]
+                                removed_item = st.session_state['balance_history'].pop(remove_idx)
+                                st.success(f"記録 #{remove_idx+1} を削除しました！")
+                                st.rerun()
+                            else:
+                                st.warning("削除したい記録を上の選択肢から選んでください。")
+
+                    with btn_del_col2:
+                        if st.button("🗑️ 履歴をすべてリセット", key="btn_del_all"):
+                            st.session_state['balance_history'] = []
+                            st.rerun()
+                else:
+                    st.info("収支メモを入力して「記録・追加」を押すと、ここに回収率グラフや履歴が表示されます。")
