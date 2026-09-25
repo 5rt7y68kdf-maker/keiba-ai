@@ -9,12 +9,16 @@ import pandas as pd
 # SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# 日本標準時 (JST = UTC+9)
+JST = datetime.timezone(datetime.timedelta(hours=9))
+
 # 全国10競馬場のコードマップ
 VENUE_MAP = {
     "札幌": "01", "函館": "02", "福島": "03", "新潟": "04",
     "東京": "05", "中山": "06", "中京": "07", "京都": "08",
     "阪神": "09", "小倉": "10"
 }
+VENUE_CODE_TO_NAME = {v: k for k, v in VENUE_MAP.items()}
 
 ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
@@ -31,7 +35,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Clean, high-contrast light theme
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
@@ -50,7 +53,6 @@ st.markdown("""
         letter-spacing: -0.02em;
     }
 
-    /* Horse Card Styling with Full Text Visibility */
     .horse-card {
         background: #ffffff;
         border-radius: 16px;
@@ -150,14 +152,14 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "計不", 0
 
-    m = re.search(r'(\d{3,4})\s*\\(\s*([+-]?\d+)\s*\\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\((\s*([+-]?\d+)\s*)\)', clean_txt)
     if m:
         w_val = m.group(1)
         d_val = int(m.group(2))
         d_str = f"+{d_val}" if d_val > 0 else str(d_val)
         return f"{w_val}kg ({d_str})", d_val
 
-    m_note = re.search(r'(\d{3,4})\s*\\((.*)\\)', clean_txt)
+    m_note = re.search(r'(\d{3,4})\s*\((.*)\)', clean_txt)
     if m_note:
         return f"{m_note.group(1)}kg ({m_note.group(2)})", 0
 
@@ -215,64 +217,80 @@ def fetch_race_list_by_date(dt_str):
 
     for target_url in urls:
         soup, _ = fetch_html(target_url)
-        if not soup: continue
+        if not soup:
+            continue
 
         main_area = (
             soup.select_one('div.RaceList_Data') or
-            soup.select_one('div.RaceTop_RaceList') or
-            soup.select_one('div#RaceTop_RaceList') or
-            soup.select_one('div.Main_Content') or
+            soup.select_one('div#race_list_body') or
+            soup.select_one('div.Race_List') or
+            soup.select_one('div#main') or
             soup
         )
 
         for a in main_area.find_all('a'):
             href = a.get('href', '')
             m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
-            if not m: continue
+            if not m:
+                continue
 
             r_id = m.group(1)
             v_code = r_id[4:6]
-            if v_code not in VENUE_CODE_TO_NAME: continue
+            if v_code not in VENUE_CODE_TO_NAME:
+                continue
 
             venue_name = VENUE_CODE_TO_NAME[v_code]
             r_num = int(r_id[10:12])
 
-            clean_title = clean_race_title(a.text)
+            raw_text = a.text.strip().replace('\n', ' ')
+            raw_text = re.sub(r'\s+', ' ', raw_text)
+            clean_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+            clean_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|Myレース|予想|IPAT)', '', clean_name).strip()
 
-            display_title = f"📍【{venue_name} {r_num}R】 {clean_title}" if clean_title else f"📍【{venue_name} {r_num}R】"
+            display_title = f"📍【{venue_name} {r_num}R】 {clean_name}" if clean_name and len(clean_name) >= 2 else f"📍【{venue_name} {r_num}R】"
 
-            if r_id not in races_dict or (clean_title and len(races_dict[r_id]['name']) < len(display_title)):
-                races_dict[r_id] = {'id': r_id, 'name': display_title, 'venue': venue_name, 'r_num': r_num}
+            if r_id not in races_dict or len(display_title) > len(races_dict[r_id]['name']):
+                races_dict[r_id] = {
+                    'id': r_id,
+                    'name': display_title,
+                    'venue': venue_name,
+                    'r_num': r_num
+                }
 
-    # 2. db.netkeiba.com (過去データベース メイン枠限定)
+    # 2. 空の場合は db.netkeiba.com のメインエリアのみ検索
     if not races_dict:
         db_url = f"https://db.netkeiba.com/race/list/{clean_date}/"
         soup, _ = fetch_html(db_url)
         if soup:
-            main_area = (
-                soup.select_one('div.db_main_race_list') or
-                soup.select_one('div#main') or
-                soup.select_one('table.race_table_01') or
-                soup
-            )
+            main_area = soup.select_one('div.db_main_race_list') or soup.select_one('div#main') or soup
             for a in main_area.find_all('a'):
                 href = a.get('href', '')
                 m = re.search(r'/race/(\d{12})', href)
-                if not m: continue
+                if m:
+                    r_id = m.group(1)
+                    v_code = r_id[4:6]
+                    if v_code not in VENUE_CODE_TO_NAME:
+                        continue
+                    venue_name = VENUE_CODE_TO_NAME[v_code]
+                    r_num = int(r_id[10:12])
 
-                r_id = m.group(1)
-                v_code = r_id[4:6]
-                if v_code not in VENUE_CODE_TO_NAME: continue
+                    raw_text = a.text.strip().replace('\n', ' ')
+                    raw_text = re.sub(r'\s+', ' ', raw_text)
+                    clean_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+                    clean_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|Myレース|予想|IPAT)', '', clean_name).strip()
 
-                venue_name = VENUE_CODE_TO_NAME[v_code]
-                r_num = int(r_id[10:12])
+                    display_title = f"📍【{venue_name} {r_num}R】 {clean_name}" if clean_name and len(clean_name) >= 2 else f"📍【{venue_name} {r_num}R】"
 
-                clean_title = clean_race_title(a.text)
+                    if r_id not in races_dict:
+                        races_dict[r_id] = {
+                            'id': r_id,
+                            'name': display_title,
+                            'venue': venue_name,
+                            'r_num': r_num
+                        }
 
-                display_title = f"📍【{venue_name} {r_num}R】 {clean_title}" if clean_title else f"📍【{venue_name} {r_num}R】"
-
-                if r_id not in races_dict:
-                    races_dict[r_id] = {'id': r_id, 'name': display_title, 'venue': venue_name, 'r_num': r_num}
+    if not races_dict:
+        return [], f"指定された日付 ({clean_date}) の中央競馬(JRA)レースデータは見つかりませんでした。"
 
     races = list(races_dict.values())
     races.sort(key=lambda x: x['id'])
@@ -301,6 +319,7 @@ def parse_db_netkeiba(soup):
 
     rows = table.find_all('tr')[1:]
     data_list = []
+    seen_uma = set()
     for r in rows:
         tds = r.find_all('td')
         if len(tds) < 8: continue
@@ -333,6 +352,9 @@ def parse_db_netkeiba(soup):
         if u_idx is not None and u_idx < len(tds):
             txt = tds[u_idx].text.strip()
             if txt.isdigit(): umaban = int(txt)
+
+        if umaban in seen_uma: continue
+        seen_uma.add(umaban)
 
         weight_val = 55.0
         wt_idx = col_map.get('weight')
@@ -386,6 +408,7 @@ def parse_race_netkeiba(soup):
     if not rows: return []
 
     data_list = []
+    seen_uma = set()
     for idx, r in enumerate(rows, start=1):
         td_list = r.find_all(['td', 'th'])
         if len(td_list) < 2: continue
@@ -441,15 +464,18 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list.text.strip()
+            txt = td_list[0].text.strip()
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list.text.strip()
+            txt = td_list[1].text.strip()
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
         if wakaban is None: wakaban = (umaban - 1) // 2 + 1 if umaban <= 16 else 8
+
+        if umaban in seen_uma: continue
+        seen_uma.add(umaban)
 
         data_list.append({
             '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
@@ -472,22 +498,20 @@ def fetch_odds_data(clean_id):
         rows = table.find_all('tr')
         for r in rows:
             tds = r.find_all(['td', 'th'])
-            if len(tds) >= 4:
-                uma_txt = tds.text.strip() if len(tds) > 1 else ''
-                odds_txt = tds[-2].text.strip() if len(tds) > 2 else ''
-                pop_txt = tds[-1].text.strip() if len(tds) > 3 else ''
-                
-                m_uma = re.search(r'(\d+)', uma_txt)
-                m_odds = re.search(r'(\d+\.\d+|\d+)', odds_txt)
-                m_pop = re.search(r'(\d+)', pop_txt)
-                
+            if len(tds) >= 3:
+                cells_txt = [td.text.strip() for td in tds]
+                m_uma, m_odds, m_pop = None, None, None
+
+                for txt in cells_txt:
+                    if not m_uma and re.match(r'^\d{1,2}$', txt) and 1 <= int(txt) <= 18:
+                        m_uma = int(txt)
+                    elif re.match(r'^\d{1,3}\.\d$', txt):
+                        m_odds = float(txt)
+                    elif re.match(r'^\d{1,2}$', txt) and m_uma and int(txt) != m_uma and 1 <= int(txt) <= 18:
+                        m_pop = int(txt)
+
                 if m_uma and m_odds:
-                    try:
-                        uma = int(m_uma.group(1))
-                        odds = float(m_odds.group(1))
-                        pop = int(m_pop.group(1)) if m_pop else "未確定"
-                        odds_map[uma] = {'odds': odds, 'pop': pop}
-                    except ValueError: pass
+                    odds_map[m_uma] = {'odds': m_odds, 'pop': m_pop if m_pop else "未確定"}
     return odds_map
 
 # ---------------------------------------------------------
@@ -872,7 +896,7 @@ st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro</div>', unsafe_all
 tab1, tab2, tab3 = st.tabs(["📅 日付で全レース検索", "⚙️ 競馬場・条件指定", "🔢 12桁ID直接入力"])
 
 target_race_id = None
-today = datetime.date.today()
+today = datetime.datetime.now(JST).date()
 
 with tab1:
     col_d1, col_d2 = st.columns(2)
