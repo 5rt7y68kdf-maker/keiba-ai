@@ -738,46 +738,48 @@ elif data_list:
 
     # 📊 馬ごとの適性レーダーチャート（Plotlyビジュアル分析）
     with st.expander("📊 出走馬の適性・能力レーダーチャート比較（タップで展開）", expanded=False):
-        all_horse_options = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list]
-        default_radar = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in [honmei, taikou, tanana] if d]
-        if ana_horse:
-            default_radar.append(f"{ana_horse['馬番']}番 {ana_horse['馬名']} ({ana_horse['印']})")
-        
-        sel_radar = st.multiselect("📊 レーダーチャートで比較する馬を選択（最大5頭）", all_horse_options, default=default_radar[:4])
-        
-        if sel_radar:
-            fig_radar = go.Figure()
-            categories = ['スピード指数', '騎手力', '馬体気配', '展開バイアス', '総合AIパワー']
+        if PLOTLY_AVAILABLE:
+            all_horse_options = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list]
+            default_radar = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in [honmei, taikou, tanana] if d]
+            if ana_horse:
+                default_radar.append(f"{ana_horse['馬番']}番 {ana_horse['馬名']} ({ana_horse['印']})")
             
-            for h_opt in sel_radar:
-                u_no = int(h_opt.split('番')[0])
-                match_h = next((d for d in data_list if d['馬番'] == u_no), None)
-                if match_h:
-                    vals = [
-                        match_h.get('sub_speed', 50.0),
-                        match_h.get('sub_jockey', 50.0),
-                        match_h.get('sub_paddock', 50.0),
-                        match_h.get('sub_bias', 50.0),
-                        match_h.get('sub_overall', 50.0)
-                    ]
-                    vals_closed = vals + [vals[0]]
-                    cats_closed = categories + [categories[0]]
-                    
-                    fig_radar.add_trace(go.Scatterpolar(
-                        r=vals_closed,
-                        theta=cats_closed,
-                        fill='toself',
-                        name=f"{match_h['馬番']}番 {match_h['馬名']}"
-                    ))
+            sel_radar = st.multiselect("📊 レーダーチャートで比較する馬を選択（最大5頭）", all_horse_options, default=default_radar[:4])
             
-            fig_radar.update_layout(
-                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                showlegend=True,
-                margin=dict(l=40, r=40, t=30, b=30),
-                height=380
-            )
-            if PLOTLY_AVAILABLE:
+            if sel_radar:
+                fig_radar = go.Figure()
+                categories = ['スピード指数', '騎手力', '馬体気配', '展開バイアス', '総合AIパワー']
+                
+                for h_opt in sel_radar:
+                    u_no = int(h_opt.split('番')[0])
+                    match_h = next((d for d in data_list if d['馬番'] == u_no), None)
+                    if match_h:
+                        vals = [
+                            match_h.get('sub_speed', 50.0),
+                            match_h.get('sub_jockey', 50.0),
+                            match_h.get('sub_paddock', 50.0),
+                            match_h.get('sub_bias', 50.0),
+                            match_h.get('sub_overall', 50.0)
+                        ]
+                        vals_closed = vals + [vals[0]]
+                        cats_closed = categories + [categories[0]]
+                        
+                        fig_radar.add_trace(go.Scatterpolar(
+                            r=vals_closed,
+                            theta=cats_closed,
+                            fill='toself',
+                            name=f"{match_h['馬番']}番 {match_h['馬名']}"
+                        ))
+                
+                fig_radar.update_layout(
+                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                    showlegend=True,
+                    margin=dict(l=40, r=40, t=30, b=30),
+                    height=380
+                )
                 st.plotly_chart(fig_radar, use_container_width=True)
+        else:
+            st.info("💡 Plotlyが有効化されるとレーダーチャートが表示されます (`requirements.txt` に `plotly` を追加してください)。")
 
     # 数値データの小数点第一位（例: 12.3）丸め処理
     for col in ["AI指数", "勝率予測", "単勝オッズ", "斤量"]:
