@@ -30,7 +30,7 @@ TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "
 # Streamlit Page Config & Mobile-First High-Contrast Styling
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Kuina AI Racing Ultimate",
+    page_title="Kuina AI Racing Ultimate Pro",
     page_icon="🏇",
     layout="wide",
     initial_sidebar_state="auto"
@@ -112,6 +112,17 @@ st.markdown("""
         word-break: break-all;
     }
 
+    .ai-comment-box {
+        background: #f0f9ff;
+        border-left: 5px solid #0284c7;
+        padding: 14px;
+        border-radius: 10px;
+        margin-top: 10px;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        color: #0369a1;
+    }
+
     /* レスポンシブ用ボタン・レイアウト調整 */
     @media (max-width: 768px) {
         .hero-title {
@@ -138,7 +149,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -286,6 +297,21 @@ def fetch_odds_data(clean_id):
     return odds_map
 
 # ---------------------------------------------------------
+# AI Analysis Comment Generator Engine
+# ---------------------------------------------------------
+def generate_ai_analysis_comment(honmei, taikou, tanana, track_cond, pace_setting):
+    comment_parts = []
+    
+    jockey_h = honmei['騎手']
+    j_eval = "トップジョッキー鞍上で勝負気配良好。" if any(j in jockey_h for j in TOP_JOCKEYS_S + TOP_JOCKEYS_A) else "主戦騎手とのコンビで一発に期待。"
+    w_eval = "好調な馬体重を維持。" if honmei['体重増減'] in range(-4, 5) else "当日の気配に注目。"
+    comment_parts.append(f"**【本命 ◎ {honmei['馬番']}番 {honmei['馬名']}】**\nAI指数{honmei['AI指数']}で最上位評価。{j_eval}{w_eval} {track_cond}馬場および{pace_setting}の展開アドバンテージも大きく、軸として信頼度抜群です。")
+    
+    comment_parts.append(f"**【対抗 ◯ {taikou['馬番']}番 {taikou['馬名']} & 単穴 ▲ {tanana['馬番']}番 {tanana['馬名']}】**\n対抗の{taikou['馬名']}（{taikou['騎手']}）は勝率予測{taikou['勝率予測']}%で逆転対抗筆頭。単穴の{tanana['馬名']}は展開ひとつで上位浮上が狙える穴目の要注目馬です。")
+    
+    return "\n\n".join(comment_parts)
+
+# ---------------------------------------------------------
 # AI Prediction Engine + All Advanced Tools
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース"):
@@ -412,12 +438,11 @@ if 'active_race_id' not in st.session_state:
 # ---------------------------------------------------------
 # Streamlit Responsive Main App UI
 # ---------------------------------------------------------
-st.markdown('<div class="hero-title">🏇 Kuina AI Racing App (v33 完全版)</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">🏇 Kuina AI Racing Ultimate Pro</div>', unsafe_allow_html=True)
 
 now_jst = datetime.datetime.now(JST)
 today_jst = now_jst.date()
 
-# 今週の土曜・日曜の日付計算
 days_to_sat = (5 - today_jst.weekday()) % 7
 sat_date = today_jst + datetime.timedelta(days=days_to_sat)
 sun_date = sat_date + datetime.timedelta(days=1)
@@ -486,7 +511,6 @@ with tab1:
     active_dt = sat_date if st.session_state.get('sel_date_type') == 'sat' else sun_date
     st.markdown(f"##### 📍 選択中: **{active_dt.strftime('%Y年%m月%d日')}** の開催レース")
     
-    # 会場選択ボタン (中山 / 阪神 / 中京 など)
     st.caption("▼ 競馬場を選択してください")
     v_cols = st.columns(3)
     venues_today = ["中山", "阪神", "中京"]
@@ -498,7 +522,6 @@ with tab1:
     cur_v = st.session_state.get('active_venue', '中山')
     st.markdown(f"###### 🎯 **{cur_v}競馬場 1R〜12R レース選択**")
     
-    # 選択された会場の 1R〜12R ボタン一覧生成
     races_tab1 = generate_jra_race_ids_loop(active_dt.year, cur_v, 4, 8)
     r1_cols = st.columns(6)
     for idx, r in enumerate(races_tab1):
@@ -549,7 +572,7 @@ with st.expander("🐴 直前パドック気配・状態補正チェック（タ
     for u_idx in range(1, 19):
         c_target = p_col1 if u_idx % 2 != 0 else p_col2
         with c_target:
-            st_select = st.selectbox(f"{u_idx}番 馬気配", ["平行線 (▲)", "絶好調 (◎)", "好調 (◯)", "割引 (×)"], key=f"pad_{u_idx}")
+            st_select = st.selectbox(f"{u_idx}番 馬気配", ["平行線 (▲)", "絶好調 (◎)", "好調 (◯)", "割引 (×)"], key=f`pad_{u_idx}`)
             paddock_map[u_idx] = st_select
 
 # ---------------------------------------------------------
@@ -568,7 +591,7 @@ elif data_list:
     taikou = next((d for d in data_list if d['印'] == '◯'), data_list[0] if len(data_list)>1 else data_list[0])
     tanana = next((d for d in data_list if d['印'] == '▲'), data_list[0] if len(data_list)>2 else data_list[0])
 
-    # 上位3頭カード (PCでは3列、スマホでは自動で1列縦積み)
+    # 上位3頭カード
     m1, m2, m3 = st.columns(3)
     with m1:
         st.markdown(f"""
@@ -604,6 +627,15 @@ elif data_list:
         </div>
         """, unsafe_allow_html=True)
 
+    # 🧠 AI多角分析コメント
+    ai_comment_text = generate_ai_analysis_comment(honmei, taikou, tanana, track_cond, sel_pace)
+    st.markdown(f"""
+    <div class="ai-comment-box">
+        <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 6px;">🧠 AI総合分析・展開見解コメント</div>
+        {ai_comment_text}
+    </div>
+    """, unsafe_allow_html=True)
+
     # ---------------------------------------------------------
     # 🎫 全券種対応！資金配分＆オッズシミュレーター
     # ---------------------------------------------------------
@@ -629,5 +661,15 @@ elif data_list:
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("#### 📋 全出馬表 & AI予想一覧 (馬体重・オッズ・人気全表示)")
+    # 📊 出馬表 ＆ CSVダウンロード
+    st.markdown("#### 📋 全出馬表 & AI予想一覧")
     st.dataframe(df, use_container_width=True)
+    
+    csv_data = df.to_csv(index=False, encoding='utf-8-sig')
+    st.download_button(
+        label="📥 このAI予想結果をCSVファイルでダウンロード",
+        data=csv_data,
+        file_name=f"ai_prediction_{target_race_id}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
