@@ -21,6 +21,9 @@ VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
 ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
+TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
+TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
+
 # ---------------------------------------------------------
 # Streamlit Page Config & High-Contrast Light Styling
 # ---------------------------------------------------------
@@ -58,8 +61,8 @@ st.markdown("""
         border-radius: 10px;
         padding: 14px 20px;
         color: #ffffff;
-        margin-top: 8px;
-        margin-bottom: 12px;
+        margin-top: 10px;
+        margin-bottom: 14px;
         box-shadow: 0 3px 8px rgba(37, 99, 235, 0.15);
     }
     .hero-title {
@@ -276,11 +279,11 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
     if "差" in txt: return "差し"
     if "追" in txt: return "追込"
 
-    if umaban in [1, 2] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
+    if umaban in [1, 2, 3] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
         return "逃げ"
-    elif umaban in [3, 4, 5, 6]:
+    elif umaban in [4, 5, 6, 7, 8]:
         return "先行"
-    elif umaban in [7, 8, 9, 10, 11, 12]:
+    elif umaban in [9, 10, 11, 12, 13, 14]:
         return "差し"
     else:
         return "追込"
@@ -440,11 +443,11 @@ def parse_race_netkeiba(soup):
                     hw_str, hw_diff = p_str, p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list[0].text.strip() if len(td_list) > 0 else ""
+            txt = td_list.text.strip() if len(td_list) > 0 else ""
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list[1].text.strip() if len(td_list) > 1 else ""
+            txt = td_list.text.strip() if len(td_list) > 1 else ""
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -1094,7 +1097,7 @@ if target_race_id:
                 leg_cols = st.columns(2)
                 leg_options = ["逃げ", "先行", "差し", "追込"]
                 updated_leg_map = {}
-                with leg_cols[0]:
+                with leg_cols:
                     st.caption("🐴 過去脚質の手動変更 (前半)")
                     for idx, horse in enumerate(data[:len(data)//2 + 1]):
                         curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
@@ -1105,7 +1108,7 @@ if target_race_id:
                             key=f"leg1_{target_race_id}_{horse['馬番']}"
                         )
                         updated_leg_map[horse['馬番']] = sel_leg
-                with leg_cols[1]:
+                with leg_cols:
                     st.caption("🐴 過去脚質の手動変更 (後半)")
                     for idx, horse in enumerate(data[len(data)//2 + 1:]):
                         curr_leg = st.session_state['leg_style_map'].get(horse['馬番'], horse.get('脚質', '先行'))
