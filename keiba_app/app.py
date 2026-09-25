@@ -6,6 +6,8 @@ import streamlit as st
 import datetime
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+import itertools
 
 # SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -126,7 +128,6 @@ st.markdown("""
         margin-top: 12px;
     }
 
-    /* スマホ・PC共通ボタン調整 */
     .stButton > button {
         width: 100% !important;
         min-height: 48px !important;
@@ -147,7 +148,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -310,9 +311,9 @@ def generate_ai_analysis_comment(honmei, taikou, tanana, track_cond, pace_settin
     return "\n\n".join(comment_parts)
 
 # ---------------------------------------------------------
-# AI Prediction Engine + Track Bias System
+# AI Prediction Engine + Custom Weights & Track Bias System
 # ---------------------------------------------------------
-def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット"):
+def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0):
     if not data_list: return []
 
     has_real_odds = any(isinstance(d['単勝オッズ'], (int, float)) for d in data_list)
@@ -334,7 +335,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         for d in data_list:
             val = d['単勝オッズ']
             if isinstance(val, (int, float)) and val > 0:
-                d['numeric_odds'] = val
+                d['numeric_odds'] = round(float(val), 1)
             else:
                 d['numeric_odds'] = 20.0
 
@@ -346,11 +347,13 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         j_bonus = 0.0
         if any(j in jockey for j in TOP_JOCKEYS_S): j_bonus = 8.0
         elif any(j in jockey for j in TOP_JOCKEYS_A): j_bonus = 4.0
+        j_bonus *= w_jockey
 
         w_bonus = 0.0
         diff = d.get('体重増減', 0)
         if -6 <= diff <= 4: w_bonus = 2.0
         elif diff < -10 or diff > 10: w_bonus = -3.0
+        w_bonus *= w_weight
 
         p_bonus = 0.0
         uma_num = d['馬番']
@@ -360,6 +363,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
             elif st_val == "好調 (◯)": p_bonus = 6.0
             elif st_val == "平行線 (▲)": p_bonus = 0.0
             elif st_val == "割引 (×)": p_bonus = -10.0
+        p_bonus *= w_paddock
 
         cond_bonus = 0.0
         if track_condition in ["重", "不良"]:
@@ -389,10 +393,19 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         elif track_bias_leg == "外差し・追込決まる":
             if d['馬番'] >= 7: tb_leg_bonus = 5.0
 
+        bias_sum = (tb_waku_bonus + tb_leg_bonus + pace_bonus + cond_bonus) * w_bias
+
         ped_bonus = round((hash(d['馬名']) % 5), 1)
 
-        total_score = base_score + j_bonus + w_bonus + p_bonus + cond_bonus + pace_bonus + tb_waku_bonus + tb_leg_bonus + ped_bonus
+        total_score = base_score + j_bonus + w_bonus + p_bonus + bias_sum + ped_bonus
         d['AI指数'] = round(total_score, 1)
+
+        # 個性評価用データ (レーダーチャート用)
+        d['sub_speed'] = round(min(100.0, max(20.0, base_score + 10.0)), 1)
+        d['sub_jockey'] = round(min(100.0, max(20.0, 50.0 + j_bonus * 5.0)), 1)
+        d['sub_paddock'] = round(min(100.0, max(20.0, 50.0 + p_bonus * 4.0 + w_bonus * 5.0)), 1)
+        d['sub_bias'] = round(min(100.0, max(20.0, 50.0 + bias_sum * 4.0)), 1)
+        d['sub_overall'] = round(min(100.0, max(20.0, total_score)), 1)
 
     scores = [d['AI指数'] for d in data_list]
     max_s = max(scores) if scores else 100.0
@@ -414,7 +427,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
     return data_list
 
-def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット"):
+def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0):
     if len(clean_id) != 12:
         return None, "レースIDは12桁の数字で指定してください。"
 
@@ -432,11 +445,22 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
         for d in data_list:
             uma = d['馬番']
             if uma in odds_map:
-                d['単勝オッズ'] = odds_map[uma]['odds']
+                d['単勝オッズ'] = round(float(odds_map[uma]['odds']), 1)
                 if odds_map[uma]['pop'] != "未確定":
                     d['人気'] = odds_map[uma]['pop']
 
-    data_list = calculate_ai_scores(data_list, paddock_status_map=paddock_map, track_condition=track_condition, pace_setting=pace_setting, track_bias_waku=track_bias_waku, track_bias_leg=track_bias_leg)
+    data_list = calculate_ai_scores(
+        data_list,
+        paddock_status_map=paddock_map,
+        track_condition=track_condition,
+        pace_setting=pace_setting,
+        track_bias_waku=track_bias_waku,
+        track_bias_leg=track_bias_leg,
+        w_jockey=w_jockey,
+        w_paddock=w_paddock,
+        w_bias=w_bias,
+        w_weight=w_weight
+    )
     return data_list, None
 
 # ---------------------------------------------------------
@@ -535,9 +559,9 @@ with tab3:
 target_race_id = st.session_state.get('active_race_id', '202606040811')
 
 # =========================================================
-# 【Step 2】 トラックバイアス & レース環境 & パドック設定
+# 【Step 2】 トラックバイアス & レース環境 & カスタム調整スライダー
 # =========================================================
-st.markdown('<div class="step-header">Step 2 🌦 トラックバイアス（馬場傾向）& パドック補正設定</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-header">Step 2 🌦 トラックバイアス（馬場傾向）& 🤖 AI予想カスタム調整</div>', unsafe_allow_html=True)
 
 tb_col1, tb_col2 = st.columns(2)
 with tb_col1:
@@ -556,6 +580,18 @@ with tb_col2:
     )
     sel_pace = st.selectbox("⏱ 展開・ペース予想", ["ミドルペース", "スローペース（前残り）", "ハイペース（差し有利）"], index=0)
 
+# 🤖 機能5: AI予想ロジックのカスタム調整スライダー
+w_jockey, w_paddock, w_bias, w_weight = 1.0, 1.0, 1.0, 1.0
+with st.expander("🤖 AI予想ロジックの重み調整スライダー（自分好みにカスタマイズ）", expanded=False):
+    st.caption("各ファクターの重要度をスライダーで変更すると、リアルタイムでAI指数が再計算されます。")
+    sw1, sw2 = st.columns(2)
+    with sw1:
+        w_jockey = st.slider("🏇 騎手実績・騎手力 重視度", 0.0, 2.0, 1.0, 0.1)
+        w_paddock = st.slider("🐴 パドック直前気配 重視度", 0.0, 2.0, 1.0, 0.1)
+    with sw2:
+        w_bias = st.slider("🏃 トラックバイアス・展開 重視度", 0.0, 2.0, 1.0, 0.1)
+        w_weight = st.slider("⚖️ 馬体重・コンディション 重視度", 0.0, 2.0, 1.0, 0.1)
+
 paddock_map = {}
 with st.expander("🐴 直前パドック気配・状態補正チェック（タップで展開）", expanded=False):
     st.caption("パドック気配を選択すると、AI指数と推奨買い目がリアルタイム再計算されます。")
@@ -567,7 +603,7 @@ with st.expander("🐴 直前パドック気配・状態補正チェック（タ
             paddock_map[u_idx] = st_select
 
 # =========================================================
-# 【Step 3】 AI解析結果 (最左にAI印を配置 & 出馬表 & AIコメント)
+# 【Step 3】 AI解析結果 (最左AI印, レーダーチャート & 出馬表)
 # =========================================================
 st.markdown(f'<div class="step-header">Step 3 📊 AI解析結果 (対象レースID: {target_race_id})</div>', unsafe_allow_html=True)
 
@@ -578,7 +614,11 @@ with st.spinner("出馬表・馬体重・オッズ・トラックバイアスを
         track_condition=track_cond,
         pace_setting=sel_pace,
         track_bias_waku=track_bias_waku,
-        track_bias_leg=track_bias_leg
+        track_bias_leg=track_bias_leg,
+        w_jockey=w_jockey,
+        w_paddock=w_paddock,
+        w_bias=w_bias,
+        w_weight=w_weight
     )
 
 if err:
@@ -639,6 +679,47 @@ elif data_list:
     </div>
     """, unsafe_allow_html=True)
 
+    # 📊 機能3: 馬ごとの適性レーダーチャート（Plotlyビジュアル分析）
+    with st.expander("📊 出走馬の適性・能力レーダーチャート比較（タップで展開）", expanded=True):
+        all_horse_options = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list]
+        default_top3 = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in [honmei, taikou, tanana]]
+        
+        sel_radar = st.multiselect("📊 レーダーチャートで比較する馬を選択（最大5頭）", all_horse_options, default=default_top3[:3])
+        
+        if sel_radar:
+            fig_radar = go.Figure()
+            categories = ['スピード指数', '騎手力', '馬体気配', '展開バイアス', '総合AIパワー']
+            
+            for h_opt in sel_radar:
+                u_no = int(h_opt.split('番')[0])
+                match_h = next((d for d in data_list if d['馬番'] == u_no), None)
+                if match_h:
+                    vals = [
+                        match_h.get('sub_speed', 50.0),
+                        match_h.get('sub_jockey', 50.0),
+                        match_h.get('sub_paddock', 50.0),
+                        match_h.get('sub_bias', 50.0),
+                        match_h.get('sub_overall', 50.0)
+                    ]
+                    # ループを閉じる
+                    vals_closed = vals + [vals[0]]
+                    cats_closed = categories + [categories[0]]
+                    
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=vals_closed,
+                        theta=cats_closed,
+                        fill='toself',
+                        name=f"{match_h['馬番']}番 {match_h['馬名']}"
+                    ))
+            
+            fig_radar.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                showlegend=True,
+                margin=dict(l=40, r=40, t=30, b=30),
+                height=380
+            )
+            st.plotly_chart(fig_radar, use_container_width=True)
+
     # 数値データの小数点第一位（例: 12.3）丸め処理
     for col in ["AI指数", "勝率予測", "単勝オッズ", "斤量"]:
         if col in df.columns:
@@ -670,40 +751,166 @@ elif data_list:
     )
 
     # =========================================================
-    # 【Step 4】 本格馬券 複数選択＆資金配分シミュレーター
+    # 【Step 4】 本格馬券 複数選択 & 自動組番計算 (フォーメーション・流し・ボックス)
     # =========================================================
-    st.markdown('<div class="step-header">Step 4 🎰 本格馬券 複数選択＆資金配分シミュレーター</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-header">Step 4 🎰 本格馬券 資金配分 & 🎯 自動組番展開 (流し・フォーメーション・ボックス)</div>', unsafe_allow_html=True)
     
-    sim_col1, sim_col2 = st.columns(2)
-    with sim_col1:
-        selected_tickets = st.multiselect(
-            "🎫 購入する勝馬投票券タイプ（複数選択可能）",
-            ALL_TICKET_TYPES,
-            default=["馬連", "3連複"]
-        )
-        budget = st.number_input("💰 総購入予算 (円)", min_value=1000, value=10000, step=1000)
-    
-    with sim_col2:
-        odds_h = float(honmei.get('numeric_odds', 3.0))
-        odds_t = float(taikou.get('numeric_odds', 5.0))
-        odds_a = float(tanana.get('numeric_odds', 8.0))
-        
-        synth_inv = (1/odds_h) + (1/odds_t) + (1/odds_a)
-        synth_odds = round(1 / synth_inv, 1) if synth_inv > 0 else 1.5
-        
-        selected_str = "、".join(selected_tickets) if selected_tickets else "選択なし"
-        num_tickets = len(selected_tickets) if selected_tickets else 1
-        alloc_per_ticket = max(100, int(budget / (num_tickets * 3)))
+    strat_mode = st.radio(
+        "🎯 購入戦略・買い目展開モード",
+        ["基本（AI推奨軸）", "🎯 流し（軸1頭固定）", "🎲 ボックス（対象馬全選択）", "📐 フォーメーション（1着・2着・3着指定）"],
+        horizontal=True
+    )
 
-        st.markdown(f"""
-        **🎯 選択中の馬券タイプ: `{selected_str}`**
-        * 本命-対抗軸: **{honmei['馬番']} - {taikou['馬番']}**
-        * 本命-単穴軸: **{honmei['馬番']} - {tanana['馬番']}**
-        * 対抗-単穴軸: **{taikou['馬番']} - {tanana['馬番']}**
-        
-        **📊 単勝換算 合成オッズ: `{synth_odds} 倍`**  
-        **💰 1点あたりの推奨投入額:** `{alloc_per_ticket:,} 円`（均等資金配分）
-        """, unsafe_allow_html=True)
+    budget = st.number_input("💰 総購入予算 (円)", min_value=1000, value=10000, step=1000)
+
+    # 1. 基本モード
+    if strat_mode == "基本（AI推奨軸）":
+        sim_col1, sim_col2 = st.columns(2)
+        with sim_col1:
+            selected_tickets = st.multiselect("🎫 購入券種", ALL_TICKET_TYPES, default=["馬連", "3連複"])
+        with sim_col2:
+            odds_h = float(honmei.get('numeric_odds', 3.0))
+            odds_t = float(taikou.get('numeric_odds', 5.0))
+            odds_a = float(tanana.get('numeric_odds', 8.0))
+            synth_inv = (1/odds_h) + (1/odds_t) + (1/odds_a)
+            synth_odds = round(1 / synth_inv, 1) if synth_inv > 0 else 1.5
+            selected_str = "、".join(selected_tickets) if selected_tickets else "選択なし"
+            num_tickets = len(selected_tickets) if selected_tickets else 1
+            alloc_per_ticket = max(100, int(budget / (num_tickets * 3)))
+
+            st.markdown(f"""
+            **🎯 選択中の馬券タイプ: `{selected_str}`**
+            * 本命-対抗軸: **{honmei['馬番']} - {taikou['馬番']}**
+            * 本命-単穴軸: **{honmei['馬番']} - {tanana['馬番']}**
+            * 対抗-単穴軸: **{taikou['馬番']} - {tanana['馬番']}**
+            
+            **📊 単勝換算 合成オッズ: `{synth_odds} 倍`**  
+            **💰 1点あたりの推奨投入額:** `{alloc_per_ticket:,} 円`（均等資金配分）
+            """)
+
+    # 2. 🎯 流しモード
+    elif strat_mode == "🎯 流し（軸1頭固定）":
+        f_col1, f_col2 = st.columns(2)
+        with f_col1:
+            ticket_type = st.selectbox("🎫 券種", ["馬連", "ワイド", "馬単", "3連複", "3連単"])
+            jiku_horse = st.selectbox("📌 軸馬 (1頭)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], index=0)
+            
+            aite_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[1:5]]
+            aite_horses = st.multiselect("🎯 相手馬 (複数選択)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=aite_default)
+
+        with f_col2:
+            j_no = int(jiku_horse.split('番')[0]) if jiku_horse else 1
+            a_nos = [int(h.split('番')[0]) for h in aite_horses]
+            
+            combos = []
+            if ticket_type in ["馬連", "ワイド"]:
+                for a in a_nos:
+                    if j_no != a: combos.append(f"{min(j_no, a)} - {max(j_no, a)}")
+            elif ticket_type == "馬単":
+                for a in a_nos:
+                    if j_no != a: combos.append(f"{j_no} ➔ {a}")
+            elif ticket_type == "3連複":
+                for p in itertools.combinations(a_nos, 2):
+                    if j_no not in p:
+                        c_sorted = sorted([j_no, p[0], p[1]])
+                        combos.append(f"{c_sorted[0]} - {c_sorted[1]} - {c_sorted[2]}")
+            elif ticket_type == "3連単":
+                for p in itertools.permutations(a_nos, 2):
+                    if j_no not in p:
+                        combos.append(f"{j_no} ➔ {p[0]} ➔ {p[1]}")
+
+            pts = len(combos)
+            alloc = max(100, int(budget / pts)) if pts > 0 else 0
+            
+            st.markdown(f"### 📊 点数: `{pts} 点` | 1点投入額: `{alloc:,} 円`")
+            st.text_area("📋 自動展開された買い目組番一覧", "\n".join(combos), height=140)
+
+    # 3. 🎲 ボックスモード
+    elif strat_mode == "🎲 ボックス（対象馬全選択）":
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            ticket_type = st.selectbox("🎫 券種", ["馬連", "ワイド", "馬単", "3連複", "3連単"])
+            box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:4]]
+            box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
+
+        with b_col2:
+            b_nos = [int(h.split('番')[0]) for h in box_horses]
+            combos = []
+            if ticket_type in ["馬連", "ワイド"]:
+                for p in itertools.combinations(b_nos, 2):
+                    combos.append(f"{min(p)} - {max(p)}")
+            elif ticket_type == "馬単":
+                for p in itertools.permutations(b_nos, 2):
+                    combos.append(f"{p[0]} ➔ {p[1]}")
+            elif ticket_type == "3連複":
+                for p in itertools.combinations(b_nos, 3):
+                    c_s = sorted(p)
+                    combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
+            elif ticket_type == "3連単":
+                for p in itertools.permutations(b_nos, 3):
+                    combos.append(f"{p[0]} ➔ {p[1]} ➔ {p[2]}")
+
+            pts = len(combos)
+            alloc = max(100, int(budget / pts)) if pts > 0 else 0
+
+            st.markdown(f"### 📊 ボックス点数: `{pts} 点` | 1点投入額: `{alloc:,} 円`")
+            st.text_area("📋 自動展開されたボックス組番一覧", "\n".join(combos), height=140)
+
+    # 4. 📐 フォーメーションモード
+    elif strat_mode == "📐 フォーメーション（1着・2着・3着指定）":
+        fmt_col1, fmt_col2 = st.columns(2)
+        with fmt_col1:
+            ticket_type = st.selectbox("🎫 券種", ["3連複", "3连単", "馬連", "馬単"])
+            
+            f1_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:1]]
+            f2_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:3]]
+            f3_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:5]]
+
+            f1_h = st.multiselect("1頭目 / 1着候補", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f1_def)
+            f2_h = st.multiselect("2頭目 / 2着候補", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f2_def)
+            f3_h = st.multiselect("3頭目 / 3着候補 (3連系のみ)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f3_def)
+
+        with fmt_col2:
+            n1 = [int(h.split('番')[0]) for h in f1_h]
+            n2 = [int(h.split('番')[0]) for h in f2_h]
+            n3 = [int(h.split('番')[0]) for h in f3_h]
+
+            combos = []
+            if ticket_type == "馬単":
+                for a in n1:
+                    for b in n2:
+                        if a != b: combos.append(f"{a} ➔ {b}")
+            elif ticket_type == "馬連":
+                seen = set()
+                for a in n1:
+                    for b in n2:
+                        if a != b:
+                            pair = tuple(sorted([a, b]))
+                            if pair not in seen:
+                                seen.add(pair)
+                                combos.append(f"{pair[0]} - {pair[1]}")
+            elif ticket_type == "3連単":
+                for a in n1:
+                    for b in n2:
+                        for c in n3:
+                            if len({a, b, c}) == 3:
+                                combos.append(f"{a} ➔ {b} ➔ {c}")
+            elif ticket_type == "3連複":
+                seen = set()
+                for a in n1:
+                    for b in n2:
+                        for c in n3:
+                            if len({a, b, c}) == 3:
+                                trio = tuple(sorted([a, b, c]))
+                                if trio not in seen:
+                                    seen.add(trio)
+                                    combos.append(f"{trio[0]} - {trio[1]} - {trio[2]}")
+
+            pts = len(combos)
+            alloc = max(100, int(budget / pts)) if pts > 0 else 0
+
+            st.markdown(f"### 📊 フォーメーション点数: `{pts} 点` | 1点投入額: `{alloc:,} 円`")
+            st.text_area("📋 自動展開されたフォーメーション組番一覧", "\n".join(combos), height=140)
 
     # 収支記録フォーム
     st.markdown("#### 📝 このレースの成績・結果を収支管理に追加")
