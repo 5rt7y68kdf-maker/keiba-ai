@@ -13,7 +13,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 日本標準時 JST
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
-# 全国10競馬場のコードマップ (中央競馬 JRA)
+# 全国10競馬場のコードマップ (中央競馬 JRA 12桁ID対応)
 VENUE_MAP = {
     "札幌": "01", "函館": "02", "福島": "03", "新潟": "04",
     "東京": "05", "中山": "06", "中京": "07", "京都": "08",
@@ -87,7 +87,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Helper Utilities: Weight, Odds & Popularity Parsing
+# JRA 12-Digit Race ID Calculation Engine
+# 法則: [年4桁] + [競馬場2桁] + [第何回2桁] + [何日目2桁] + [レースR2桁]
+# ---------------------------------------------------------
+def build_jra_race_id(year: int, venue_name: str, kai: int, nichi: int, race_num: int) -> str:
+    v_code = VENUE_MAP.get(venue_name, "06")
+    return f"{year:04d}{v_code}{kai:02d}{nichi:02d}{race_num:02d}"
+
+def generate_day_races(year: int, venue_name: str, kai: int, nichi: int):
+    races = []
+    for r in range(1, 13):
+        r_id = build_jra_race_id(year, venue_name, kai, nichi, r)
+        races.append({
+            "race_num": r,
+            "race_id": r_id,
+            "venue_name": venue_name,
+            "label": f"{venue_name}{r}R"
+        })
+    return races
+
+# ---------------------------------------------------------
+# Utility Parsers (Horse Weight, Odds, Popularity)
 # ---------------------------------------------------------
 def parse_horse_weight_str(txt):
     if not txt:
@@ -134,26 +154,6 @@ def fetch_html(url, timeout=7):
     except Exception as e:
         return None, f"通信エラー: {e}"
 
-# ---------------------------------------------------------
-# JRA 12-Digit Race ID Generator (Loop 1R-12R)
-# ---------------------------------------------------------
-def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
-    v_code = VENUE_MAP.get(venue_name, "06")
-    races_list = []
-    for r_num in range(1, 13):
-        r_id = f"{year}{v_code}{kai:02d}{nichi:02d}{r_num:02d}"
-        races_list.append({
-            'id': r_id,
-            'name': f"📍【{venue_name} {r_num}R】",
-            'venue': venue_name,
-            'r_num': r_num,
-            'v_code': v_code
-        })
-    return races_list
-
-# ---------------------------------------------------------
-# Parsing Netkeiba Shutuba & Odds Page (Instant Single Load)
-# ---------------------------------------------------------
 def parse_race_netkeiba(soup):
     for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
         noisy.decompose()
@@ -247,7 +247,7 @@ def fetch_odds_data(clean_id):
     return odds_map
 
 # ---------------------------------------------------------
-# AI Prediction Engine
+# AI Calculation Engine
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list):
     if not data_list: return []
@@ -310,7 +310,7 @@ def get_race_data_by_id(clean_id):
     if not data_list:
         return None, f"指定されたレースID ({clean_id}) の出馬表データを取得できませんでした。"
 
-    # Instant Odds / Popularity 補完
+    # オッズ補完
     odds_map = fetch_odds_data(clean_id)
     if odds_map:
         for d in data_list:
@@ -320,10 +320,10 @@ def get_race_data_by_id(clean_id):
                 if odds_map[uma]['pop'] != "未確定":
                     d['人気'] = odds_map[uma]['pop']
 
-    # オッズ確定値に基づく人気順位の自動並べ替え
+    # 人気ランク付け
     valid_odds = [(idx, d['単勝オッズ']) for idx, d in enumerate(data_list) if isinstance(d['単勝オッズ'], (int, float))]
     if valid_odds:
-        valid_odds.sort(key=lambda x: x)
+        valid_odds.sort(key=lambda x: x[1])
         for rank, (idx, _) in enumerate(valid_odds, 1):
             if data_list[idx]['人気'] == "未確定":
                 data_list[idx]['人気'] = rank
@@ -332,14 +332,14 @@ def get_race_data_by_id(clean_id):
     return data_list, None
 
 # ---------------------------------------------------------
-# Streamlit App Execution
+# Streamlit UI (JRA 12桁ID自動計算 完全組み込み版)
 # ---------------------------------------------------------
-st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro (一括データ抽出完了版)</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro (JRA12桁ID自動計算 組み込み版)</div>', unsafe_allow_html=True)
 
 now_jst = datetime.datetime.now(JST)
 today_jst = now_jst.date()
 
-st.markdown("### 🏇 JRA12桁ID レース選択")
+st.markdown("### 🏇 1️⃣ 開催条件を指定（JRA 12桁ID自動計算）")
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -351,34 +351,37 @@ with c3:
 with c4:
     sel_nichi = st.number_input("何日目", 1, 12, 8)
 
-races_list = generate_jra_race_ids_loop(sel_year, sel_venue, sel_kai, sel_nichi)
+# 1R〜12RのJRA 12桁IDを一括自動生成
+day_races = generate_day_races(sel_year, sel_venue, sel_kai, sel_nichi)
 
-st.markdown(f"#### 📍 対象会場: **{sel_year}年 第{sel_kai}回 {sel_venue} {sel_nichi}日目**")
+st.markdown(f"#### 📍 **{sel_year}年 第{sel_kai}回 {sel_venue} {sel_nichi}日目** （全12レース自動生成完了）")
 
+# 1R〜12R ボタン配置
+st.markdown("#### 2️⃣ レースを選択（押すと12桁IDで即座に解析）")
 r_cols = st.columns(6)
-for idx, r in enumerate(races_list):
+for idx, r in enumerate(day_races):
     col_idx = idx % 6
     with r_cols[col_idx]:
-        btn_label = f"{r['r_num']}R"
-        if st.button(btn_label, key=f"btn_r_{r['id']}", use_container_width=True):
-            st.session_state['active_race_id'] = r['id']
+        btn_label = f"{r['race_num']}R"
+        if st.button(btn_label, key=f"btn_r_{r['race_id']}", use_container_width=True):
+            st.session_state['active_race_id'] = r['race_id']
 
 if 'active_race_id' not in st.session_state or not st.session_state['active_race_id']:
-    st.session_state['active_race_id'] = races_list[0]['id']
+    st.session_state['active_race_id'] = day_races[0]['race_id']
 
 target_race_id = st.session_state['active_race_id']
 
 st.markdown("---")
-st.markdown(f"### 📊 解析結果 (レースID: `{target_race_id}`)")
+st.markdown(f"### 📊 解析結果 (自動算出JRA 12桁ID: `{target_race_id}`)")
 
-with st.spinner("読み込み時のオッズ・人気・馬体重を抽出中..."):
+with st.spinner("出馬表・単勝オッズ・人気・馬体重をデータ解析中..."):
     data_list, err = get_race_data_by_id(target_race_id)
 
 if err:
     st.error(err)
 elif data_list:
     df = pd.DataFrame(data_list)
-    st.success(f"✅ {len(data_list)}頭の【オッズ・人気・馬体重・出馬表】を読み込みました！")
+    st.success(f"✅ {len(data_list)}頭のデータ（オッズ・人気・馬体重）を読み込み完了！")
 
     honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
     taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
@@ -419,5 +422,5 @@ elif data_list:
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("#### 📋 一括抽出結果一覧 (単勝オッズ・人気・馬体重)")
+    st.markdown("#### 📋 全出馬表 & AI予想一覧 (オッズ・人気・馬体重)")
     st.dataframe(df, use_container_width=True)
