@@ -30,7 +30,7 @@ TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "
 # Streamlit Page Config & High-Contrast Light Clean Styling
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Kuina AI Racing Ultimate Pro v38",
+    page_title="Kuina AI Racing Ultimate Pro v39",
     page_icon="🏇",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -124,7 +124,6 @@ st.markdown("""
         margin-top: 12px;
     }
 
-    /* スマホ・PC共通ボタン調整 */
     .stButton > button {
         width: 100% !important;
         min-height: 48px !important;
@@ -145,7 +144,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -255,6 +254,7 @@ def parse_race_netkeiba(soup):
                 hw_str, hw_diff = parse_horse_weight_str(text)
 
         data_list.append({
+            "印": "・",
             "枠番": wakaban, "馬番": umaban, "馬名": horse_name,
             "騎手": jockey_name, "斤量": weight_val,
             "単勝オッズ": odds_val, "人気": pop_val,
@@ -368,7 +368,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         elif pace_setting == "ハイペース（差し有利）":
             if d['馬番'] >= 7: pace_bonus += 4.0
 
-        # トラックバイアス (内/外枠) 補正
         tb_waku_bonus = 0.0
         if track_bias_waku == "超内伸び (1〜3枠絶好)":
             if d['枠番'] <= 3: tb_waku_bonus = 6.0
@@ -381,7 +380,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
             if d['枠番'] >= 6: tb_waku_bonus = 6.0
             elif d['枠番'] <= 3: tb_waku_bonus = -4.0
 
-        # トラックバイアス (前後・脚質) 補正
         tb_leg_bonus = 0.0
         if track_bias_leg == "前残り絶対優位 (逃げ・先行)":
             if d['馬番'] <= 6: tb_leg_bonus = 5.0
@@ -408,7 +406,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         elif rank == 2: d_rank = '▲'
         elif rank == 3: d_rank = '☆'
         elif rank <= 5: d_rank = '△'
-        else: d_rank = '消'
+        else: d_rank = '・'
         data_list[i]['印'] = d_rank
 
     return data_list
@@ -456,7 +454,7 @@ if 'active_race_id' not in st.session_state:
 st.markdown("""
 <div class="main-header">
     <h1>🏇 Kuina AI Racing Ultimate Pro</h1>
-    <div>AIオッズ解析・トラックバイアス・合成オッズ＆馬券配分シミュレーション</div>
+    <div>AIオッズ解析・トラックバイアス・複数馬券選択＆資金配分シミュレーション</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -468,7 +466,7 @@ sat_date = today_jst + datetime.timedelta(days=days_to_sat)
 sun_date = sat_date + datetime.timedelta(days=1)
 
 # =========================================================
-# 【Step 1】 レース選択 (スマホでも順序崩れゼロ: 1R〜12R昇順)
+# 【Step 1】 レース選択 (1R〜12R昇順 & 開催競馬場選択)
 # =========================================================
 st.markdown('<div class="step-header">Step 1 🎯 対象レースを選択する</div>', unsafe_allow_html=True)
 
@@ -486,20 +484,17 @@ with tab1:
     active_dt = sat_date if st.session_state.get('sel_date_type') == 'sat' else sun_date
     st.markdown(f"**📍 選択中の日付: {active_dt.strftime('%Y年%m月%d日')}**")
     
-    st.caption("▼ 競馬場を選択してください")
-    v_cols = st.columns(3)
-    venues_today = ["中山", "阪神", "中京"]
-    for idx, v_name in enumerate(venues_today):
-        with v_cols[idx % 3]:
-            if st.button(f"🏇 {v_name}", key=f"v_btn_{v_name}", use_container_width=True):
-                st.session_state['active_venue'] = v_name
+    st.caption("▼ 開催競馬場を選択してください")
+    all_venues_list = list(VENUE_MAP.keys())
+    cur_v_index = all_venues_list.index(st.session_state.get('active_venue', '中山')) if st.session_state.get('active_venue', '中山') in all_venues_list else 5
+    sel_v_name = st.selectbox("🏇 競馬場切り替え", all_venues_list, index=cur_v_index)
+    st.session_state['active_venue'] = sel_v_name
     
     cur_v = st.session_state.get('active_venue', '中山')
     st.markdown(f"**🎯 {cur_v}競馬場 1R〜12R レース選択**")
     
     races_tab1 = generate_jra_race_ids_loop(active_dt.year, cur_v, 4, 8)
     
-    # スマホでも1R〜12Rが順番通り並ぶ「行分割(4列×3行)」グリッド
     for row_idx in range(3):
         r_cols = st.columns(4)
         for col_idx in range(4):
@@ -521,7 +516,6 @@ with tab2:
     races_list = generate_jra_race_ids_loop(sel_year, sel_venue, sel_kai, sel_nichi)
     st.caption(f"📍 対象会場: **{sel_year}年 第{sel_kai}回 {sel_venue} {sel_nichi}日目**")
 
-    # スマホ対応 4列×3行 昇順配置
     for row_idx in range(3):
         r_cols = st.columns(4)
         for col_idx in range(4):
@@ -571,7 +565,7 @@ with st.expander("🐴 直前パドック気配・状態補正チェック（タ
             paddock_map[u_idx] = st_select
 
 # =========================================================
-# 【Step 3】 AI解析結果 (上位評価馬 & 出馬表 & AIコメント)
+# 【Step 3】 AI解析結果 (最左にAI印を配置 & 出馬表 & AIコメント)
 # =========================================================
 st.markdown(f'<div class="step-header">Step 3 📊 AI解析結果 (対象レースID: {target_race_id})</div>', unsafe_allow_html=True)
 
@@ -589,11 +583,14 @@ if err:
     st.error(err)
 elif data_list:
     df = pd.DataFrame(data_list)
-    st.success(f"✅ {len(data_list)}頭のデータ（馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
+    cols_order = ["印", "枠番", "馬番", "馬名", "AI指数", "勝率予測", "単勝オッズ", "人気", "騎手", "斤量", "馬体重", "体重増減"]
+    df = df[[c for c in cols_order if c in df.columns]]
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
+    st.success(f"✅ {len(data_list)}頭のデータ（AI印・馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
+
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[2] if len(data_list)>2 else data_list[0])
 
     # 上位評価カード
     m1, m2, m3 = st.columns(3)
@@ -640,9 +637,18 @@ elif data_list:
     </div>
     """, unsafe_allow_html=True)
 
-    # 全出馬表 & CSVダウンロード
-    st.markdown("#### 📋 全出馬表 & AI予想一覧")
-    st.dataframe(df, use_container_width=True)
+    # 全出馬表 (一番左が「印」)
+    st.markdown("#### 📋 全出馬表 & AI予想一覧 (一番左列がAI印◎◯▲)")
+    
+    def highlight_marks(val):
+        if val == '◎': return 'background-color: #fca5a5; color: #991b1b; font-weight: bold;'
+        elif val == '◯': return 'background-color: #6ee7b7; color: #065f46; font-weight: bold;'
+        elif val == '▲': return 'background-color: #93c5fd; color: #1e40af; font-weight: bold;'
+        elif val == '☆': return 'background-color: #fef08a; color: #854d0e; font-weight: bold;'
+        elif val == '△': return 'background-color: #e2e8f0; color: #334155;'
+        return ''
+
+    st.dataframe(df.style.map(highlight_marks, subset=['印']), use_container_width=True)
     
     csv_data = df.to_csv(index=False, encoding='utf-8-sig')
     st.download_button(
@@ -654,36 +660,39 @@ elif data_list:
     )
 
     # =========================================================
-    # 【Step 4】 本格馬券オッズ＆合成オッズ配分シミュレーター
+    # 【Step 4】 本格馬券 複数選択＆資金配分シミュレーター
     # =========================================================
-    st.markdown('<div class="step-header">Step 4 🎰 本格馬券合成オッズ＆配分シミュレーター</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-header">Step 4 🎰 本格馬券 複数選択＆資金配分シミュレーター</div>', unsafe_allow_html=True)
     
     sim_col1, sim_col2 = st.columns(2)
     with sim_col1:
-        selected_ticket = st.selectbox("🎫 勝馬投票券タイプ", ALL_TICKET_TYPES, index=3) # 馬連
+        selected_tickets = st.multiselect(
+            "🎫 購入する勝馬投票券タイプ（複数選択可能）",
+            ALL_TICKET_TYPES,
+            default=["馬連", "3連複"]
+        )
         budget = st.number_input("💰 総購入予算 (円)", min_value=1000, value=10000, step=1000)
     
     with sim_col2:
-        # 馬券合成オッズ・資金配分計算
         odds_h = float(honmei.get('numeric_odds', 3.0))
         odds_t = float(taikou.get('numeric_odds', 5.0))
         odds_a = float(tanana.get('numeric_odds', 8.0))
         
-        # 簡易合成オッズシミュレーション (1/O_total = 1/O1 + 1/O2 + 1/O3)
         synth_inv = (1/odds_h) + (1/odds_t) + (1/odds_a)
         synth_odds = round(1 / synth_inv, 2) if synth_inv > 0 else 1.5
         
-        expected_return = int(budget * (synth_odds * 0.75)) # トリガミ防止期待計算
-        rec_return_rate = round((expected_return / budget) * 100, 1)
+        selected_str = "、".join(selected_tickets) if selected_tickets else "選択なし"
+        num_tickets = len(selected_tickets) if selected_tickets else 1
+        alloc_per_ticket = max(100, int(budget / (num_tickets * 3)))
 
         st.markdown(f"""
-        **🎯 推奨購入馬券グループ ({selected_ticket})**
-        * 買い目1: **{honmei['馬番']} - {taikou['馬番']}** (予想オッズ: {round(odds_h * 1.8, 1)}倍)
-        * 買い目2: **{honmei['馬番']} - {tanana['馬番']}** (予想オッズ: {round(odds_h * 2.5, 1)}倍)
-        * 買い目3: **{taikou['馬番']} - {tanana['馬番']}** (予想オッズ: {round(odds_t * 2.2, 1)}倍)
+        **🎯 選択中の馬券タイプ: `{selected_str}`**
+        * 本命-対抗軸: **{honmei['馬番']} - {taikou['馬番']}**
+        * 本命-単穴軸: **{honmei['馬番']} - {tanana['馬番']}**
+        * 対抗-単穴軸: **{taikou['馬番']} - {tanana['馬番']}**
         
-        **📊 合成オッズ: `{synth_odds} 倍`**  
-        **💰 トリガミ防止 配分投入目安:** `{max(100, int(budget/3)):,} 円` / 1点
+        **📊 単勝換算 合成オッズ: `{synth_odds} 倍`**  
+        **💰 1点あたりの推奨投入額:** `{alloc_per_ticket:,} 円`（均等資金配分）
         """, unsafe_allow_html=True)
 
     # 収支記録フォーム
