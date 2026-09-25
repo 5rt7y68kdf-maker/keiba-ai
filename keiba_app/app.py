@@ -9,26 +9,19 @@ import pandas as pd
 # SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 全国10競馬場のコードマップ
+# JRA全国10競馬場コードマップ
 JRA_VENUES = {
     "札幌": "01", "函館": "02", "福島": "03", "新潟": "04",
     "東京": "05", "中山": "06", "中京": "07", "京都": "08",
     "阪神": "09", "小倉": "10"
 }
-
-VENUE_MAP = JRA_VENUES
 VENUE_CODE_TO_NAME = {v: k for k, v in JRA_VENUES.items()}
 
-ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
-
-TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
-TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
-
 # ---------------------------------------------------------
-# Streamlit Page Config & High-Contrast Light Styling
+# Streamlit Page Config & Clean High-Contrast Styling
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Kuina AI Racing Pro (JRA中央競馬)",
+    page_title="Kuina AI Racing Pro",
     page_icon="🏇",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -36,18 +29,13 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* 画面上部の余白をしっかり確保してタイトル見切れを完全に防止 */
     .block-container {
-        padding-top: 3.8rem !important;
-        padding-bottom: 1.5rem !important;
-        padding-left: 1.0rem !important;
-        padding-right: 1.0rem !important;
-        max-width: 99% !important;
+        padding-top: 2.5rem !important;
+        padding-bottom: 2.0rem !important;
+        padding-left: 1.2rem !important;
+        padding-right: 1.2rem !important;
+        max-width: 100% !important;
     }
-    div[data-testid="stVerticalBlock"] {
-        gap: 0.6rem !important;
-    }
-    
     .stApp {
         background: #f8fafc;
         color: #0f172a;
@@ -55,30 +43,27 @@ st.markdown("""
         line-height: 1.6 !important;
     }
     
-    /* 洗練されたヒーローヘッダー */
+    /* ヒーローヘッダー */
     .hero-container {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
         border-radius: 12px;
-        padding: 16px 22px;
+        padding: 18px 24px;
         color: #ffffff;
-        margin-top: 10px;
         margin-bottom: 16px;
         box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
     }
     .hero-title {
-        font-size: 1.7rem;
+        font-size: 1.8rem;
         font-weight: 900;
         color: #ffffff;
         margin: 0;
-        line-height: 1.25;
-        letter-spacing: -0.01em;
+        line-height: 1.2;
     }
     .hero-sub {
-        font-size: 0.85rem;
-        color: #93c5fd;
+        font-size: 0.88rem;
+        color: #bfdbfe;
         font-weight: 700;
         margin-top: 4px;
-        letter-spacing: 0.05em;
     }
 
     /* ボタン */
@@ -87,72 +72,65 @@ st.markdown("""
         background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%) !important;
         color: #ffffff !important;
         font-weight: 800 !important;
-        font-size: 0.92rem !important;
-        border-radius: 6px !important;
+        font-size: 0.95rem !important;
+        border-radius: 8px !important;
         border: none !important;
-        padding: 8px 14px !important;
-        box-shadow: 0 2px 5px rgba(37, 99, 235, 0.18) !important;
-        margin-bottom: 4px !important;
+        padding: 10px 16px !important;
+        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2) !important;
     }
 
-    /* 予想カード (行間ゆったり・見やすさ重視) */
+    /* 予想カード */
     .horse-card {
         background: #ffffff;
-        border-radius: 10px;
-        padding: 14px 16px !important;
+        border-radius: 12px;
+        padding: 16px 18px !important;
         border: 1px solid #cbd5e1;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
-        margin-bottom: 10px !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        margin-bottom: 12px !important;
         word-break: break-word !important;
-        white-space: normal !important;
         line-height: 1.6 !important;
     }
-    .card-honmei { border-left: 5px solid #dc2626; background: #fff5f5; }
-    .card-taikou { border-left: 5px solid #059669; background: #f0fdf4; }
-    .card-tanana { border-left: 5px solid #2563eb; background: #eff6ff; }
+    .card-honmei { border-left: 6px solid #dc2626; background: #fff5f5; }
+    .card-taikou { border-left: 6px solid #059669; background: #f0fdf4; }
+    .card-tanana { border-left: 6px solid #2563eb; background: #eff6ff; }
 
-    .badge-honmei { background: #dc2626; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
-    .badge-taikou { background: #059669; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
-    .badge-tanana { background: #2563eb; color: white; padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem; }
+    .badge-honmei { background: #dc2626; color: white; padding: 3px 12px; border-radius: 12px; font-weight: bold; font-size: 0.82rem; }
+    .badge-taikou { background: #059669; color: white; padding: 3px 12px; border-radius: 12px; font-weight: bold; font-size: 0.82rem; }
+    .badge-tanana { background: #2563eb; color: white; padding: 3px 12px; border-radius: 12px; font-weight: bold; font-size: 0.82rem; }
 
-    /* 枠番・馬番バッジの左右幅をタイトに凝縮 */
     .waku-badge {
         display: inline-block;
         background: #334155;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 4px !important;
-        border-radius: 3px;
-        font-size: 0.78rem;
-        margin-right: 2px !important;
-        letter-spacing: -0.02em;
+        padding: 2px 6px !important;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        margin-right: 3px !important;
     }
     .uma-badge {
         display: inline-block;
         background: #0f172a;
         color: #ffffff;
         font-weight: 800;
-        padding: 1px 5px !important;
-        border-radius: 3px;
-        font-size: 0.85rem;
-        margin-right: 3px !important;
-        letter-spacing: -0.02em;
+        padding: 2px 7px !important;
+        border-radius: 4px;
+        font-size: 0.88rem;
+        margin-right: 4px !important;
     }
 
-    /* 展開・指標・計算カード */
-    .pace-card {
+    .pace-card, .bet-card, .metric-container {
         background: #ffffff;
         border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 10px 12px !important;
-        margin-bottom: 6px !important;
+        border-radius: 10px;
+        padding: 12px 16px !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.02);
         line-height: 1.5 !important;
     }
     .pace-title {
         font-weight: 800;
-        font-size: 0.88rem;
-        margin-bottom: 4px;
-        padding: 2px 6px;
+        font-size: 0.9rem;
+        padding: 2px 8px;
         border-radius: 4px;
         display: inline-block;
     }
@@ -161,104 +139,47 @@ st.markdown("""
     .pace-sashi { background: #dbeafe; color: #1e40af; }
     .pace-oikomi { background: #fef9c3; color: #854d0e; }
 
-    .bet-card, .calc-card, .sim-card {
-        background: #ffffff;
-        border-radius: 8px;
-        padding: 12px 14px !important;
-        border: 1px solid #cbd5e1;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.02);
-        margin-bottom: 8px !important;
-        line-height: 1.5 !important;
-    }
-    .bet-title {
-        font-weight: 700;
-        font-size: 0.92rem;
-        color: #1e40af;
-        margin-bottom: 4px;
-    }
+    .bet-title { font-weight: 700; font-size: 0.95rem; color: #1e40af; margin-bottom: 4px; }
     .bet-code {
-        font-family: monospace;
-        font-size: 0.92rem;
-        background: #f1f5f9;
-        padding: 6px 10px;
-        border-radius: 4px;
-        color: #0f172a;
-        font-weight: bold;
-        border: 1px solid #cbd5e1;
-        margin: 4px 0;
-        white-space: pre-line;
-        word-break: break-all;
+        font-family: monospace; font-size: 0.95rem; background: #f1f5f9;
+        padding: 6px 12px; border-radius: 6px; color: #0f172a; font-weight: bold;
+        border: 1px solid #cbd5e1; margin: 6px 0; white-space: pre-line; word-break: break-all;
     }
 
-    .metric-container {
-        background: #ffffff;
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 10px 14px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-        line-height: 1.4 !important;
-    }
-    .metric-label {
-        font-size: 0.76rem;
-        color: #64748b;
-        font-weight: 700;
-    }
-    .metric-value {
-        font-size: 1.08rem;
-        font-weight: 800;
-        color: #0f172a;
-        margin-top: 2px;
-    }
-    div[data-testid="stDataFrame"] {
-        border-radius: 8px;
-        border: 1px solid #cbd5e1;
-        background: #ffffff;
-    }
-    
-    /* 表（DataFrame）のセル行間とタイトな列幅設定 */
-    div[data-testid="stDataFrame"] td, div[data-testid="stDataFrame"] th {
-        padding: 6px 8px !important;
-        line-height: 1.5 !important;
-    }
-    hr {
-        margin: 0.8rem 0 !important;
-    }
+    .metric-label { font-size: 0.78rem; color: #64748b; font-weight: 700; }
+    .metric-value { font-size: 1.15rem; font-weight: 800; color: #0f172a; margin-top: 2px; }
+
+    div[data-testid="stDataFrame"] { border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; }
+    div[data-testid="stDataFrame"] td, div[data-testid="stDataFrame"] th { padding: 6px 10px !important; line-height: 1.5 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Helper Functions & Odds Formatting
+# Helper Functions
 # ---------------------------------------------------------
 def format_odds_val(val):
     if val is None or val == "未確定" or val == "" or str(val).strip() in ['--', '---.-']:
         return "未確定"
     try:
-        f_val = float(val)
-        return f"{f_val:.1f}"
+        return f"{float(val):.1f}"
     except (ValueError, TypeError):
         return "未確定"
 
 def parse_horse_weight_str(txt):
-    if not txt:
-        return "計不", 0
+    if not txt: return "計不", 0
     clean_txt = str(txt).strip().replace(' ', '')
-    if not clean_txt or clean_txt in ['--', '計不', '前計不', '---']:
-        return "計不", 0
+    if not clean_txt or clean_txt in ['--', '計不', '前計不', '---']: return "計不", 0
 
     m = re.search(r'(\d{3,4})\s*\\(\s*([+-]?\d+)\s*\\)', clean_txt)
     if m:
-        w_val = m.group(1)
-        d_val = int(m.group(2))
-        d_str = f"+{d_val}" if d_val > 0 else str(d_val)
-        return f"{w_val}kg ({d_str})", d_val
+        w_val, d_val = m.group(1), int(m.group(2))
+        return f"{w_val}kg ({'+' if d_val > 0 else ''}{d_val})", d_val
 
     m_note = re.search(r'(\d{3,4})\s*\\((.*)\\)', clean_txt)
-    if m_note:
-        return f"{m_note.group(1)}kg ({m_note.group(2)})", 0
+    if m_note: return f"{m_note.group(1)}kg ({m_note.group(2)})", 0
 
     m_plain = re.search(r'(\d{3,4})', clean_txt)
-    if m_plain:
-        return f"{m_plain.group(1)}kg", 0
+    if m_plain: return f"{m_plain.group(1)}kg", 0
 
     return "計不", 0
 
@@ -266,10 +187,10 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
     if passage_txt:
         m = re.search(r'(\d{1,2})', str(passage_txt))
         if m:
-            first_pos = int(m.group(1))
-            if first_pos <= 2: return "逃げ"
-            elif first_pos <= 5: return "先行"
-            elif first_pos <= 10: return "差し"
+            pos = int(m.group(1))
+            if pos <= 2: return "逃げ"
+            elif pos <= 5: return "先行"
+            elif pos <= 10: return "差し"
             else: return "追込"
 
     txt = str(passage_txt)
@@ -278,7 +199,7 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
     if "差" in txt: return "差し"
     if "追" in txt: return "追込"
 
-    if umaban in [1, 2] or (wakaban == 1 and (isinstance(pop_val, int) and pop_val <= 5)):
+    if umaban in [1, 2] or (wakaban == 1 and isinstance(pop_val, int) and pop_val <= 5):
         return "逃げ"
     elif umaban in [3, 4, 5, 6]:
         return "先行"
@@ -288,21 +209,21 @@ def infer_leg_style_from_passage(passage_txt, umaban, wakaban, pop_val):
         return "追込"
 
 # ---------------------------------------------------------
-# Web Scraping & Data Fetching (明日の予想・前日出馬表対応)
+# Web Scraping Engine
 # ---------------------------------------------------------
 def fetch_html(url):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
         'Referer': 'https://race.netkeiba.com/'
     }
     try:
         session = requests.Session()
         session.headers.update(headers)
-        res = session.get(url, verify=False, timeout=15)
+        res = session.get(url, verify=False, timeout=12)
         if res.status_code != 200:
-            return None, f"アクセスエラー (ステータスコード: {res.status_code})"
+            return None, f"HTTPエラー {res.status_code}"
 
         html_text = None
         for enc in ['euc-jp', 'euc_jp', 'cp932', 'shift_jis', 'utf-8']:
@@ -318,17 +239,19 @@ def fetch_html(url):
 
         return BeautifulSoup(html_text, 'html.parser'), None
     except Exception as e:
-        return None, f"通信エラーが発生しました: {e}"
+        return None, f"通信エラー: {e}"
 
 def extract_race_id_from_input(user_input):
     if not user_input: return None
-    m = re.search(r'(\d{12})', str(user_input))
+    clean_str = str(user_input).strip()
+    m = re.search(r'(\d{12})', clean_str)
     if m: return m.group(1)
-    m10 = re.search(r'(\d{10})', str(user_input))
+    m10 = re.search(r'(\d{10})', clean_str)
     if m10: return "20" + m10.group(1)
     return None
 
 def fetch_race_list_by_date(dt_str):
+    """日付からJRA全国の全競馬場・全レースIDを網羅取得"""
     clean_date = re.sub(r'\D', '', str(dt_str))
     if len(clean_date) != 8:
         return [], "日付は8桁の数字(YYYYMMDD)で指定してください。"
@@ -366,11 +289,8 @@ def fetch_race_list_by_date(dt_str):
             if r_id not in races_dict or len(display_title) > len(races_dict[r_id]['name']):
                 races_dict[r_id] = {'id': r_id, 'name': display_title, 'venue': venue_name, 'r_num': r_num}
 
-    if not races_dict:
-        return [], f"指定された日付 ({clean_date}) の自動一覧リンクが見つかりませんでした。"
-
     races = list(races_dict.values())
-    races.sort(key=lambda x: x['id'])
+    races.sort(key=lambda x: (x['id'][4:6], x['r_num']))
     return races, None
 
 def parse_race_netkeiba(soup):
@@ -439,11 +359,11 @@ def parse_race_netkeiba(soup):
                     hw_str, hw_diff = p_str, p_diff
 
         if wakaban is None and len(td_list) > 0:
-            txt = td_list[0].text.strip() if len(td_list) > 0 else ""
+            txt = td_list[0].text.strip()
             if txt.isdigit() and 1 <= int(txt) <= 8: wakaban = int(txt)
 
         if umaban is None and len(td_list) > 1:
-            txt = td_list[1].text.strip() if len(td_list) > 1 else ""
+            txt = td_list[1].text.strip()
             if txt.isdigit(): umaban = int(txt)
 
         if umaban is None: umaban = idx
@@ -602,19 +522,14 @@ def fetch_odds_data(clean_id):
     return odds_map
 
 # ---------------------------------------------------------
-# AI Score Engine (血統・脚質・馬場適性メイン / 人気・騎手を除外)
+# AI Score Engine (血統・脚質・馬場適性重視)
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_style_overrides=None):
     if not data_list: return data_list
     if paddock_status_map is None: paddock_status_map = {}
     if leg_style_overrides is None: leg_style_overrides = {}
     if race_env is None:
-        race_env = {
-            'weather': '晴',
-            'condition': '良',
-            'bias': '⚪ フラット',
-            'pace': 'ミドルペース'
-        }
+        race_env = {'weather': '晴', 'condition': '良', 'bias': '⚪ フラット', 'pace': 'ミドルペース'}
 
     scored_items = []
     for d in data_list:
@@ -622,12 +537,11 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         hw_diff = d.get('体重増減', 0)
         uma = d.get('馬番')
         waku = d.get('枠番', 1)
-        jockey = d.get('騎手', '')
         horse_name = d.get('馬名', '')
         
         leg_style = leg_style_overrides.get(uma, d.get('脚質', '先行'))
 
-        # 1. 血統適性 (メインファクター①: 最大 30pt)
+        # 血統適性
         blood_score = 15.0
         blood_comment = "血統標準"
         if race_env['condition'] in ['重', '不良', '稍重']:
@@ -645,39 +559,39 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
                 blood_score = 22.0
                 blood_comment = "【血統適合】標準良馬場スピード血統"
 
-        # 2. 脚質・展開適合 (メインファクター②: 最大 35pt)
+        # 脚質・展開適合
         pace_score = 20.0
         pace_comment = f"【脚質: {leg_style}】"
 
         if race_env['pace'] == 'スローペース（前残り）':
             if leg_style in ['逃げ', '先行']:
                 pace_score = 33.0
-                pace_comment += " スロー展開絶好！前残り圧倒的有利"
+                pace_comment += " スロー展開絶好！前残り有利"
             elif leg_style == '差し':
                 pace_score = 15.0
-                pace_comment += " スロー展開で前捕獲微妙"
+                pace_comment += " スロー展開で届くか微妙"
             else:
                 pace_score = 8.0
-                pace_comment += " スロー展開で後方極めて厳しい"
+                pace_comment += " スロー展開で後方厳しい"
         elif race_env['pace'] == 'ハイペース（差し有利）':
             if leg_style in ['差し', '追込']:
                 pace_score = 33.0
-                pace_comment += " ハイペース消耗戦で差し・追い込み絶好！"
+                pace_comment += " ハイペースで差し・追い込み絶好"
             elif leg_style == '先行':
                 pace_score = 15.0
-                pace_comment += " 前半競り合い消耗懸念"
+                pace_comment += " 競り合い消耗懸念"
             else:
                 pace_score = 8.0
-                pace_comment += " 逃げ潰れ危険"
+                pace_comment += " 逃げ潰れ注意"
         else:
             if leg_style in ['先行', '差し']:
                 pace_score = 30.0
-                pace_comment += " ミドルペース順当展開"
+                pace_comment += " ミドルペース順当"
             else:
                 pace_score = 22.0
                 pace_comment += " 標準展開"
 
-        # 3. 馬場適性・トラックバイアス (メインファクター③: 最大 25pt)
+        # 馬場適性・トラックバイアス
         bias_score = 15.0
         bias_comment = "馬場フラット"
         if "内伸び" in race_env['bias']:
@@ -693,14 +607,14 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
         elif "外伸び" in race_env['bias']:
             if leg_style in ['差し', '追込'] or waku in [6, 7, 8]:
                 bias_score = 25.0
-                bias_comment = f"【馬場バイアス絶好】外伸び馬場で{leg_style}・外枠活きる"
+                bias_comment = f"【馬場バイアス絶好】外伸び馬場で{leg_style}活きる"
             else:
                 bias_score = 15.0
                 bias_comment = "【馬場バイアス標準】"
         else:
             bias_score = 18.0
 
-        # 4. 馬体・斤量・パドック (補助)
+        # 馬体重・パドック
         hw_score = 5.0 if abs(hw_diff) <= 4 else (-4.0 if hw_diff >= 10 else (-5.0 if hw_diff <= -10 else 0.0))
         hw_comment = "仕上がり良好" if abs(hw_diff) <= 4 else ("太め残り" if hw_diff >= 10 else ("大幅減" if hw_diff <= -10 else "許容範囲"))
 
@@ -761,7 +675,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None, leg_s
 # ---------------------------------------------------------
 # Betting Recommendation Strategy
 # ---------------------------------------------------------
-def generate_betting_recommendations(data_list, strategy_mode="⚖️ バランス重視（王道）", selected_ticket_types=None):
+def generate_betting_recommendations(data_list, strategy_mode="⚖️ バランス重視", selected_ticket_types=None):
     honmei = next((d for d in data_list if '◎' in d.get('予想印', '')), None)
     taikou = next((d for d in data_list if '◯' in d.get('予想印', '')), None)
     tanana = next((d for d in data_list if '▲' in d.get('予想印', '')), None)
@@ -784,55 +698,48 @@ def generate_betting_recommendations(data_list, strategy_mode="⚖️ バラン�
             "方式": f"馬単 1着固定 (軸: {h_uma}番)",
             "買い目": f"1着: {h_uma} → 2着: " + ", ".join([str(u) for u in partner_umas[:4]]),
             "点数": f"{len(partner_umas[:4])} 点",
-            "解説": "本命◎が確実に頭(1着)に来る展開で回収率と的中率を両立",
-            "想定オッズ": 14.5
+            "解説": "本命◎が確実に1着に来る展開で回収率と的中率を両立"
         }
         all_bets["馬連（軸流し）"] = {
             "方式": f"馬連 流し (軸: {h_uma}番)",
             "買い目": f"{h_uma} － " + ", ".join([str(u) for u in partner_umas[:4]]),
             "点数": f"{len(partner_umas[:4])} 点",
-            "解説": "本命軸からの的中率と配当のバランスに優れた王道買い目",
-            "想定オッズ": 10.5
+            "解説": "的中率と配当バランスに優れた王道買い目"
         }
-        all_bets["ワイド（堅実収支）"] = {
+        all_bets["ワイド（堅実）"] = {
             "方式": f"ワイド 流し (軸: {h_uma}番)",
             "買い目": f"{h_uma} － " + ", ".join([str(u) for u in partner_umas[:3]]),
             "点数": f"{len(partner_umas[:3])} 点",
-            "解説": "的中率重視。プラス収支を底上げする堅実馬券",
-            "想定オッズ": 3.8
+            "解説": "的中率重視。プラス収支を底上げ"
         }
         all_bets["3連複（1頭軸流し）"] = {
             "方式": f"3連複 1頭軸流し (軸: {h_uma}番)",
             "買い目": f"{h_uma} ＝ " + ", ".join([str(u) for u in partner_umas]),
             "点数": f"{len(partner_umas)*(len(partner_umas)-1)//2 if len(partner_umas)>=2 else 1} 点",
-            "解説": "相手を広めに押さえ、中穴・高配当を狙う",
-            "想定オッズ": 28.5
+            "解説": "相手を広めに押さえ、中穴・高配当を狙う"
         }
 
     elif "高配当" in strategy_mode:
         ana_target = x_uma if x_uma else (a_uma if a_uma else h_uma)
-        all_bets["馬単 穴頭固定/裏表"] = {
-            "方式": f"馬単 穴頭マルチ/マルチ軸 (軸: {ana_target}番)",
+        all_bets["馬単 穴頭固定"] = {
+            "方式": f"馬単 穴頭マルチ/軸 (軸: {ana_target}番)",
             "買い目": f"1着: {ana_target} ↔ 2着: " + ", ".join([str(u) for u in [h_uma, t_uma, a_uma] if u != ana_target]),
             "点数": f"{len([u for u in [h_uma, t_uma, a_uma] if u != ana_target]) * 2} 点",
-            "解説": "高オッズ妙味の特注穴馬が1着・2着に飛び込む波乱勝負",
-            "想定オッズ": 38.0
+            "解説": "高オッズ妙味の穴馬が飛び込む波乱勝負"
         }
         all_bets["3連複 穴頭一発流し"] = {
             "方式": f"3連複 1頭軸 (軸: {ana_target}番)",
             "買い目": f"{ana_target} ＝ " + ", ".join([str(u) for u in partner_umas if u != ana_target] + [str(h_uma)]),
             "点数": f"{len(partner_umas)*(len(partner_umas)-1)//2 if len(partner_umas)>=2 else 1} 点",
-            "解説": "穴馬絡みの波乱決着で万馬券級の高配当をカバー",
-            "想定オッズ": 65.0
+            "解説": "穴馬絡みの波乱決着で万馬券級の高配当をカバー"
         }
 
     elif "3連単マルチ" in strategy_mode:
-        all_bets["3連単 1頭軸マルチ"] = {
+        all_bets["3连単 1頭軸マルチ"] = {
             "方式": f"3連単 1頭軸マルチ (軸: {h_uma}番)",
             "買い目": f"軸: {h_uma} ↔ 相手: {', '.join([str(u) for u in partner_umas[:4]])}",
             "点数": f"{len(partner_umas[:4]) * (len(partner_umas[:4])-1) * 3 if len(partner_umas[:4])>=2 else 6} 点",
-            "解説": "本命馬が2着・3着に敗れても取りこぼさない高回収マルチ",
-            "想定オッズ": 140.0
+            "解説": "本命馬が2着・3着に敗れても取りこぼさない高回収マルチ"
         }
 
     if selected_ticket_types and len(selected_ticket_types) > 0:
@@ -854,7 +761,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
     data_list = []
     errors = []
 
-    # 1. 明日・当日のリアルタイム出馬表 (race.netkeiba.com/race/shutuba.html) を最優先参照！
+    # 1. リアルタイム出馬表 (race.netkeiba.com/race/shutuba.html) を最優先取得！
     race_urls = [
         f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}",
         f"https://race.netkeiba.com/race/result.html?race_id={clean_id}"
@@ -868,7 +775,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
                 break
         elif err: errors.append(f"Race: {err}")
 
-    # 2. 過去データベース (db.netkeiba.com) をフォールバック参照！
+    # 2. 過去データベース (db.netkeiba.com) をフォールバック取得！
     if not data_list:
         db_url = f"https://db.netkeiba.com/race/{clean_id}/"
         soup, err = fetch_html(db_url)
@@ -876,9 +783,9 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
         elif err: errors.append(f"DB: {err}")
 
     if not data_list:
-        return None, f"指定されたレースの出馬表データが見つかりませんでした。(試行ID: {clean_id})\nnetkeibaに出馬表が公開されているかご確認ください。"
+        return None, f"指定されたレース (ID: {clean_id}) の出馬表が見つかりませんでした。"
 
-    # オッズ補強処理
+    # オッズ補強
     has_missing = any(d['単勝オッズ'] == "未確定" for d in data_list)
     if has_missing:
         odds_map = fetch_odds_data(clean_id)
@@ -893,7 +800,7 @@ def get_race_data(input_id, paddock_status_map=None, race_env=None, leg_style_ov
     return data_list, None
 
 # ---------------------------------------------------------
-# UI Header (見切れ防止のため十分な上部余白確保)
+# Simple Core UI Component
 # ---------------------------------------------------------
 st.markdown("""
 <div class="hero-container">
@@ -902,83 +809,74 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["📅 日付で全レース検索", "⚙️ 競馬場・条件指定", "🔢 12桁ID直接入力"])
+# シンプルなレース検索・指定エリア
+st.markdown("##### 📅 レース選択 / 直接検索")
 
-target_race_id = None
+col_input1, col_input2, col_input3 = st.columns([2, 3, 3])
+
 today = datetime.date.today()
 
-with tab1:
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        selected_date = st.date_input("開催日を選択 (明日・未来の日付も可能):", value=today)
-        dt_str = selected_date.strftime("%Y%m%d")
-        if st.button("🔍 netkeibaからレース一覧を取得"):
-            with st.spinner("JRA公式出馬表一覧を取得中..."):
-                races, err = fetch_race_list_by_date(dt_str)
-                if err: st.warning(err)
-                st.session_state['fetched_races'] = races
-                st.session_state['last_fetched_date'] = dt_str
+with col_input1:
+    selected_date = st.date_input("① 開催日を選択:", value=today)
+    dt_str = selected_date.strftime("%Y%m%d")
 
-    with col_d2:
-        if 'fetched_races' in st.session_state and st.session_state['fetched_races']:
-            race_options = {f"{r['name']} (ID: {r['id']})": r['id'] for r in st.session_state['fetched_races']}
-            selected_race_label = st.selectbox("📍 取得済みレース一覧から選択:", list(race_options.keys()))
-            if selected_race_label:
-                if st.button("🚀 このレースの出馬表を解析"):
-                    target_race_id = race_options[selected_race_label]
+with col_input2:
+    # 自動レース一覧の読み込み（セッションキャッシュ）
+    if 'fetched_date' not in st.session_state or st.session_state['fetched_date'] != dt_str:
+        with st.spinner("JRA出馬表一覧を取得中..."):
+            races_list, _ = fetch_race_list_by_date(dt_str)
+            st.session_state['fetched_races_list'] = races_list
+            st.session_state['fetched_date'] = dt_str
 
-    st.markdown("---")
-    st.caption(f"💡 選択日 (**{selected_date.strftime('%Y/%m/%d')}**) の開催競馬場・R指定ダイレクト出馬表アクセス:")
-    dir_c1, dir_c2, dir_c3, dir_c4 = st.columns(4)
-    with dir_c1:
-        dir_venue = st.selectbox("競馬場", list(VENUE_MAP.keys()), index=4, key="dir_v")
-    with dir_c2:
-        dir_kai = st.number_input("回", 1, 12, 1, key="dir_k")
-    with dir_c3:
-        dir_nichi = st.number_input("日目", 1, 12, 1, key="dir_n")
-    with dir_c4:
-        dir_r = st.number_input("レース(R)", 1, 12, 11, key="dir_r")
-
-    dir_race_id = f"{selected_date.year}{VENUE_MAP[dir_venue]}{dir_kai:02d}{dir_nichi:02d}{dir_r:02d}"
-    st.caption(f"12桁レースID: `{dir_race_id}`")
+    races_list = st.session_state.get('fetched_races_list', [])
     
-    if st.button(f"🚀 【{selected_date.strftime('%Y/%m/%d')}】 {dir_venue}{dir_r}R 出馬表へダイレクトアクセス", key="btn_dir_access"):
-        target_race_id = dir_race_id
+    if races_list:
+        race_options = {f"{r['name']} (ID: {r['id']})": r['id'] for r in races_list}
+        selected_label = st.selectbox("② 開催レース一覧:", list(race_options.keys()))
+        selected_id_from_list = race_options[selected_label]
+    else:
+        selected_id_from_list = None
+        st.info("自動リスト取得中、または開催日以外です。右で直接指定できます。")
 
-with tab2:
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1: year_sel = st.number_input("年", 2000, 2026, today.year)
-    with c2: venue_sel = st.selectbox("競馬場", list(VENUE_MAP.keys()), index=4)
-    with c3: kai_sel = st.number_input("回", 1, 12, 1)
-    with c4: nichi_sel = st.number_input("日目", 1, 12, 1)
-    with c5: race_num_sel = st.number_input("R", 1, 12, 11)
+with col_input3:
+    st.markdown("<div style='font-size:0.8rem; font-weight:700; color:#475569; margin-bottom:4px;'>③ 競馬場＆レース番号ダイレクト指定:</div>", unsafe_allow_html=True)
+    dir_v_col, dir_r_col = st.columns(2)
+    with dir_v_col:
+        sel_venue = st.selectbox("競馬場", list(VENUE_MAP.keys()), index=4, label_visibility="collapsed")
+    with dir_r_col:
+        sel_r_num = st.selectbox("R", [f"{i}R" for i in range(1, 13)], index=10, label_visibility="collapsed")
 
-    generated_id = f"{year_sel}{VENUE_MAP[venue_sel]}{kai_sel:02d}{nichi_sel:02d}{race_num_sel:02d}"
-    st.caption(f"自動生成ID: `{generated_id}`")
-    if st.button("🚀 条件指定で解析"):
-        target_race_id = generated_id
+    # 手動生成ID (例: 2026 06 01 01 11)
+    r_int = int(sel_r_num.replace('R', ''))
+    direct_generated_id = f"{selected_date.year}{VENUE_MAP[sel_venue]}0101{r_int:02d}"
 
-with tab3:
-    col_a, col_b = st.columns(2)
-    with col_a:
-        user_url_input = st.text_input("出馬表URL / 12桁レースID:", value="202405021211")
-    with col_b:
-        st.write("サンプル:")
-        if st.button("📌 日本ダービー (G1)"): target_race_id = "202405021211"
+# URL / ID 直接入力フォーム (アコーディオン)
+with st.expander("🔗 12桁レースID または ネット競馬URLを直接入力"):
+    user_url_input = st.text_input("URLまたは12桁ID:", placeholder="202405021211 または https://race.netkeiba.com/race/shutuba.html?race_id=202405021211")
 
-    if user_url_input:
-        extracted_id = extract_race_id_from_input(user_url_input)
-        if st.button("🚀 入力URL/IDで解析"):
-            if extracted_id: target_race_id = extracted_id
-            else: st.error("有効な12桁IDまたはネット競馬出馬表URLを入力してください。")
+# 分析実行ターゲットの決定
+target_race_id = None
+
+btn_col1, btn_col2 = st.columns(2)
+with btn_col1:
+    if st.button("🚀 ①/② ドロップダウン選択レースを解析"):
+        target_race_id = selected_id_from_list if selected_id_from_list else direct_generated_id
+
+with btn_col2:
+    if st.button("🚀 ③ ダイレクト指定 / URL・IDで解析"):
+        if user_url_input:
+            target_race_id = extract_race_id_from_input(user_url_input)
+        if not target_race_id:
+            target_race_id = direct_generated_id
 
 # ---------------------------------------------------------
-# Results Section
+# Main Analysis & Results Section
 # ---------------------------------------------------------
 if target_race_id:
     if 'paddock_map' not in st.session_state: st.session_state['paddock_map'] = {}
     if 'leg_style_map' not in st.session_state: st.session_state['leg_style_map'] = {}
 
+    st.markdown("---")
     st.markdown("##### 🌦️ 馬場状態・天候・展開ペルソナ調整")
     env_c1, env_c2, env_c3, env_c4 = st.columns(4)
     with env_c1: sel_weather = st.selectbox("☀️ 天候", ["晴", "曇", "雨", "小雨"], index=0)
@@ -988,7 +886,7 @@ if target_race_id:
 
     current_race_env = {'weather': sel_weather, 'condition': sel_condition, 'bias': sel_bias, 'pace': sel_pace}
 
-    with st.spinner("🤖 AI多角分析実行中（血統・脚質・馬場適性統合中）..."):
+    with st.spinner(f"🤖 レース (ID: {target_race_id}) の出馬表を取得・AI解析中..."):
         data, error = get_race_data(target_race_id, st.session_state['paddock_map'], current_race_env, leg_style_overrides=st.session_state['leg_style_map'])
 
         if error:
@@ -1009,7 +907,7 @@ if target_race_id:
                 st.markdown(f'<div class="metric-container"><div class="metric-label">単勝オッズ</div><div class="metric-value" style="color:#2563eb;">{h_o_str}倍{h_p_str}</div></div>', unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 🏇 1. AI展開予想 (過去脚質連動)
+            # 🏇 1. AI展開予想
             # ---------------------------------------------------------
             st.markdown("##### 🏇 AI展開予想 (過去脚質データ連動)")
             nige_list, senko_list, sashi_list, oikomi_list = [], [], [], []
@@ -1121,6 +1019,15 @@ if target_race_id:
                 height=380
             )
 
+            # CSVダウンロードボタン
+            csv = df_display.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 このレースの予想データをCSVでダウンロード",
+                data=csv,
+                file_name=f"race_prediction_{target_race_id}.csv",
+                mime="text/csv"
+            )
+
             # ---------------------------------------------------------
             # ⚙️ 4. 脚質・パドック手動調整
             # ---------------------------------------------------------
@@ -1163,7 +1070,7 @@ if target_race_id:
             with strat_col1:
                 strategy_mode = st.radio("🎯 戦略スタイル:", ["⚖️ バランス重視", "🔥 高配当・妙味狙い", "🎯 3連単マルチ特化"], index=0, horizontal=True)
             with strat_col2:
-                selected_tickets = st.multiselect("🎟️ 馬券種絞り込み:", options=["馬単", "馬連", "ワイド", "3連複", "3連単"], default=[])
+                selected_tickets = st.multiselect("🎟️ 馬券種絞り込み:", options=["馬単", "馬連", "ワイド", "3連複", "3连単"], default=[])
 
             bets = generate_betting_recommendations(data, strategy_mode, selected_tickets)
 
@@ -1181,7 +1088,7 @@ if target_race_id:
                         """, unsafe_allow_html=True)
 
             # ---------------------------------------------------------
-            # 💰 6. 実績 馬券収支メモ ＆ 回収率グラフ・確実な個別削除
+            # 💰 6. 実績 馬券収支メモ ＆ 回収率グラフ・個別削除
             # ---------------------------------------------------------
             st.markdown("##### 💰 実績 馬券収支メモ ＆ 回収率・損益グラフ")
             calc_col1, calc_col2 = st.columns(2)
