@@ -291,7 +291,6 @@ def fetch_odds_data(clean_id):
 def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース"):
     if not data_list: return []
 
-    # 1. オッズが未確定の場合、暫定予想オッズ・人気を算出
     has_real_odds = any(isinstance(d['単勝オッズ'], (int, float)) for d in data_list)
     
     if not has_real_odds:
@@ -315,7 +314,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
             else:
                 d['numeric_odds'] = 20.0
 
-    # 2. 本計算 (騎手・枠番・馬体重・パドック・馬場・展開補正)
     for idx, d in enumerate(data_list):
         o_val = d.get('numeric_odds', 15.0)
         base_score = max(5.0, 100.0 - (o_val * 3.5))
@@ -330,7 +328,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         if -6 <= diff <= 4: w_bonus = 2.0
         elif diff < -10 or diff > 10: w_bonus = -3.0
 
-        # パドック補正
         p_bonus = 0.0
         uma_num = d['馬番']
         if paddock_status_map and uma_num in paddock_status_map:
@@ -340,7 +337,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
             elif st_val == "平行線 (▲)": p_bonus = 0.0
             elif st_val == "割引 (×)": p_bonus = -10.0
 
-        # 馬場適性 & 展開補正
         cond_bonus = 0.0
         if track_condition in ["重", "不良"]:
             if d['枠番'] <= 3: cond_bonus += 3.0
@@ -351,7 +347,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         elif pace_setting == "ハイペース（差し有利）":
             if d['馬番'] >= 7: pace_bonus += 4.0
 
-        # 血統適性風ランダムシミュレーション（指数を多角化）
         ped_bonus = round((hash(d['馬名']) % 5), 1)
 
         total_score = base_score + j_bonus + w_bonus + p_bonus + cond_bonus + pace_bonus + ped_bonus
@@ -390,7 +385,6 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
     if not data_list:
         return None, f"指定されたレースID ({clean_id}) の出馬表データを取得できませんでした。"
 
-    # 実オッズ補完
     odds_map = fetch_odds_data(clean_id)
     if odds_map:
         for d in data_list:
@@ -404,21 +398,32 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
     return data_list, None
 
 # ---------------------------------------------------------
-# Session State Initialization (収支履歴メモ等)
+# Session State Initialization
 # ---------------------------------------------------------
 if 'balance_history' not in st.session_state:
     st.session_state['balance_history'] = []
+if 'sel_date_type' not in st.session_state:
+    st.session_state['sel_date_type'] = 'sat'
+if 'active_venue' not in st.session_state:
+    st.session_state['active_venue'] = '中山'
+if 'active_race_id' not in st.session_state:
+    st.session_state['active_race_id'] = '202606040811'
 
 # ---------------------------------------------------------
 # Streamlit Responsive Main App UI
 # ---------------------------------------------------------
-st.markdown('<div class="hero-title">🏇 Kuina AI Racing Ultimate (全ツール統合版)</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">🏇 Kuina AI Racing App (v33 完全版)</div>', unsafe_allow_html=True)
 
 now_jst = datetime.datetime.now(JST)
 today_jst = now_jst.date()
 
+# 今週の土曜・日曜の日付計算
+days_to_sat = (5 - today_jst.weekday()) % 7
+sat_date = today_jst + datetime.timedelta(days=days_to_sat)
+sun_date = sat_date + datetime.timedelta(days=1)
+
 # ---------------------------------------------------------
-# SIDEBAR: 総合競馬ツール群 (パドック・環境・資金配分・収支メモ)
+# SIDEBAR: 総合競馬ツール群
 # ---------------------------------------------------------
 with st.sidebar:
     st.header("⚙️ AI予想カスタム & 競馬ツール")
@@ -466,19 +471,41 @@ with st.sidebar:
 # ---------------------------------------------------------
 # MAIN: 3つの検索タブ (日付選択 / 条件指定 / 12桁ID入力)
 # ---------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["📅 今週・日付で中央競馬(JRA)全検索", "⚙️ 競馬場・条件直接指定 (JRA12桁ID)", "🔢 12桁ID直接入力"])
+tab1, tab2, tab3 = st.tabs(["📅 今週・日付で全レース検索", "⚙️ 競馬場・条件直接指定 (JRA12桁ID)", "🔢 12桁ID直接入力"])
 
 with tab1:
-    st.markdown("#### 📅 今週の開催日選択")
+    st.markdown("#### 📅 今週の開催日一覧")
     col_day1, col_day2 = st.columns(2)
     with col_day1:
-        if st.button("今週の土曜日 開催一覧"):
-            st.session_state['sel_date_type'] = "sat"
+        sat_btn = st.button(f"今週土曜 ({sat_date.strftime('%m/%d')}) 開催一覧", use_container_width=True)
+        if sat_btn: st.session_state['sel_date_type'] = 'sat'
     with col_day2:
-        if st.button("今週の日曜日 開催一覧"):
-            st.session_state['sel_date_type'] = "sun"
+        sun_btn = st.button(f"今週日曜 ({sun_date.strftime('%m/%d')}) 開催一覧", use_container_width=True)
+        if sun_btn: st.session_state['sel_date_type'] = 'sun'
 
-    st.info("💡 下の「条件指定タブ」または「ID入力タブ」でも即座に任意のレースを指定可能です。")
+    active_dt = sat_date if st.session_state.get('sel_date_type') == 'sat' else sun_date
+    st.markdown(f"##### 📍 選択中: **{active_dt.strftime('%Y年%m月%d日')}** の開催レース")
+    
+    # 会場選択ボタン (中山 / 阪神 / 中京 など)
+    st.caption("▼ 競馬場を選択してください")
+    v_cols = st.columns(3)
+    venues_today = ["中山", "阪神", "中京"]
+    for idx, v_name in enumerate(venues_today):
+        with v_cols[idx % 3]:
+            if st.button(f"🏇 {v_name}", key=f"v_btn_{v_name}", use_container_width=True):
+                st.session_state['active_venue'] = v_name
+    
+    cur_v = st.session_state.get('active_venue', '中山')
+    st.markdown(f"###### 🎯 **{cur_v}競馬場 1R〜12R レース選択**")
+    
+    # 選択された会場の 1R〜12R ボタン一覧生成
+    races_tab1 = generate_jra_race_ids_loop(active_dt.year, cur_v, 4, 8)
+    r1_cols = st.columns(6)
+    for idx, r in enumerate(races_tab1):
+        col_idx = idx % 6
+        with r1_cols[col_idx]:
+            if st.button(f"{r['r_num']}R", key=f"tab1_r_{r['id']}", use_container_width=True):
+                st.session_state['active_race_id'] = r['id']
 
 with tab2:
     st.markdown("#### 🏇 JRA 12桁ID自動計算＆レース選択")
@@ -493,7 +520,6 @@ with tab2:
     races_list = generate_jra_race_ids_loop(sel_year, sel_venue, sel_kai, sel_nichi)
     st.caption(f"📍 対象会場: **{sel_year}年 第{sel_kai}回 {sel_venue} {sel_nichi}日目**")
 
-    # モバイル最適化 1R〜12R ボタン
     r_cols = st.columns(6)
     for idx, r in enumerate(races_list):
         col_idx = idx % 6
@@ -508,23 +534,20 @@ with tab3:
     if st.button("🚀 このIDで直接解析"):
         st.session_state['active_race_id'] = custom_id_input.strip()
 
-if 'active_race_id' not in st.session_state or not st.session_state['active_race_id']:
-    st.session_state['active_race_id'] = "202606040811"
-
-target_race_id = st.session_state['active_race_id']
+target_race_id = st.session_state.get('active_race_id', '202606040811')
 
 st.markdown("---")
 st.markdown(f"### 📊 AI解析結果 (対象レースID: `{target_race_id}`)")
 
 # ---------------------------------------------------------
-# パドック評価入力ツール (アコーディオン式でスマホでも邪魔にならない)
+# パドック評価入力ツール
 # ---------------------------------------------------------
 paddock_map = {}
 with st.expander("🐴 直前パドック気配・状態補正チェック（タップで展開）", expanded=False):
     st.caption("パドックで見た気配を選択すると、AIスコアと推奨買い目がリアルタイムで再判定されます。")
-    p_cols = st.columns(2)
+    p_col1, p_col2 = st.columns(2)
     for u_idx in range(1, 19):
-        c_target = p_cols[0] if u_idx % 2 != 0 else p_cols[1]
+        c_target = p_col1 if u_idx % 2 != 0 else p_col2
         with c_target:
             st_select = st.selectbox(f"{u_idx}番 馬気配", ["平行線 (▲)", "絶好調 (◎)", "好調 (◯)", "割引 (×)"], key=f"pad_{u_idx}")
             paddock_map[u_idx] = st_select
@@ -541,9 +564,9 @@ elif data_list:
     df = pd.DataFrame(data_list)
     st.success(f"✅ {len(data_list)}頭の【馬名・騎手・斤量・馬体重・単勝オッズ・人気】を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[0] if len(data_list)>1 else data_list[0])
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[0] if len(data_list)>2 else data_list[0])
 
     # 上位3頭カード (PCでは3列、スマホでは自動で1列縦積み)
     m1, m2, m3 = st.columns(3)
