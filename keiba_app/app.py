@@ -154,7 +154,7 @@ def fetch_html(url, timeout=7):
         return None, f"通信エラー: {e}"
 
 # ---------------------------------------------------------
-# Fast & Guaranteed Race List Fetcher
+# Sidebar-Free Strict Race ID Extractor & Generator
 # ---------------------------------------------------------
 def fetch_race_list_by_date(dt_str):
     clean_date = re.sub(r'\D', '', str(dt_str))
@@ -166,7 +166,6 @@ def fetch_race_list_by_date(dt_str):
 
     races_dict = {}
 
-    # Query netkeiba top race list pages
     urls = [
         f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}",
         f"https://race.netkeiba.com/top/?kaisai_date={clean_date}",
@@ -177,11 +176,21 @@ def fetch_race_list_by_date(dt_str):
         soup, _ = fetch_html(target_url)
         if not soup: continue
 
-        # Decompose sidebar noise
-        for noisy in soup.select('#SideBar, .PickupRace, .Orepro, #Header, .Header'):
+        # Decompose ALL sidebar, pickup, header, footer, and recommendation noise
+        for noisy in soup.select('#SideBar, #SubBar, .SideBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, .PickUp, .Race_PickUp, .News_Box, .PR_Box, #RightColumn, .Right_Column'):
             noisy.decompose()
 
-        for a in soup.find_all('a'):
+        # Isolate strictly main race containers
+        main_container = (
+            soup.select_one('div.RaceList_Data') or
+            soup.select_one('div.Race_List') or
+            soup.select_one('div#RaceTopRace') or
+            soup.select_one('div.db_main_race_list') or
+            soup.select_one('div.RaceList_Box') or
+            soup
+        )
+
+        for a in main_container.find_all('a'):
             href = a.get('href', '')
             m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
             if not m: continue
@@ -209,7 +218,7 @@ def fetch_race_list_by_date(dt_str):
                     'v_code': v_code
                 }
 
-    # Fallback auto-generator if HTML scraping returns no races
+    # Strict fallback generator if no races scraped for future/unlisted dates
     if not races_dict:
         if month_int in [1, 2, 3, 4, 5, 9, 10, 11, 12]:
             active_venues = [('中山', '06', '04', '07'), ('阪神', '09', '04', '07'), ('中京', '07', '03', '07')]
@@ -332,7 +341,7 @@ def parse_db_netkeiba(soup):
     return data_list
 
 def parse_race_netkeiba(soup):
-    for noisy in soup.select('#SideBar, .PickupRace, .Orepro, #Header, .Header'):
+    for noisy in soup.select('#SideBar, #SubBar, .SideBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, .PickUp, .Race_PickUp, .News_Box, .PR_Box, #RightColumn, .Right_Column'):
         noisy.decompose()
 
     rows = soup.select('tr.HorseList') or soup.select('tr[class*="Horse"]')
@@ -508,7 +517,7 @@ def get_race_data_by_id(clean_id, paddock_status_map=None, race_env=None):
     if not data_list:
         return None, f"指定されたレースID ({clean_id}) の出馬表データを取得できませんでした。"
 
-    # Odds补完
+    # Odds補完
     has_missing = any(d['単勝オッズ'] == "未確定" for d in data_list)
     if has_missing:
         odds_map = fetch_odds_data(clean_id)
@@ -525,7 +534,7 @@ def get_race_data_by_id(clean_id, paddock_status_map=None, race_env=None):
 # ---------------------------------------------------------
 # UI Core Component
 # ---------------------------------------------------------
-st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro (JRA全レース対応)</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">🏇 Kuina AI Racing Pro (出馬表ID直結・最新版)</div>', unsafe_allow_html=True)
 
 now_jst = datetime.datetime.now(JST)
 today_jst = now_jst.date()
@@ -541,7 +550,7 @@ else:
 if 'sel_date' not in st.session_state:
     st.session_state['sel_date'] = this_saturday if weekday not in [5, 6] else today_jst
 
-st.markdown("### 🏇 簡単3ステップ！対象レースを選択")
+st.markdown("### 🏇 出馬表ID完全抽出・選択画面")
 
 # Step 1: 日付選択
 st.markdown("#### 1️⃣ 開催日を選択")
@@ -574,7 +583,7 @@ else:
     
     selected_venue = st.radio("競馬場選択", venues, horizontal=True)
 
-    st.markdown("#### 3️⃣ レースを選択")
+    st.markdown("#### 3️⃣ レースを選択 (出馬表ID直結)")
     venue_races = [r for r in races if r['venue'] == selected_venue]
     
     r_cols = st.columns(6)
@@ -585,11 +594,22 @@ else:
             if st.button(btn_label, key=f"btn_r_{r['id']}", use_container_width=True):
                 st.session_state['active_race_id'] = r['id']
 
-# Manual ID input fallback tab
-with st.expander("🔢 12桁ID手動入力・確認 (オプション)"):
-    m_id = st.text_input("12桁レースID:", value="202405021211")
-    if st.button("🚀 12桁IDで解析"):
-        st.session_state['active_race_id'] = m_id
+# Specialized 12-Digit Race ID direct extractor & generator section
+st.markdown("---")
+with st.expander("🔢 出馬表12桁IDの構造指定・即時抽出 (サイドバー完全排除)", expanded=False):
+    st.markdown("**JRA 12桁レースID法則**: `[年4桁] + [会場2桁] + [回2桁] + [日2桁] + [レース2桁]`")
+    c_y, c_v, c_k, c_d, c_r = st.columns(5)
+    with c_y: sel_y = st.number_input("年", 2020, 2026, today_jst.year)
+    with c_v: sel_v_name = st.selectbox("競馬場", list(VENUE_MAP.keys()), index=5)
+    with c_k: sel_kai = st.number_input("回", 1, 12, 4)
+    with c_d: sel_nichi = st.number_input("日目", 1, 12, 7)
+    with c_r: sel_r_num = st.number_input("レースR", 1, 12, 11)
+
+    generated_direct_id = f"{sel_y}{VENUE_MAP[sel_v_name]}{sel_kai:02d}{sel_nichi:02d}{sel_r_num:02d}"
+    st.info(f"📍 生成された12桁ID: `{generated_direct_id}` ({sel_v_name}{sel_r_num}R)")
+
+    if st.button("🚀 抽出されたIDで出馬表をダイレクト解析", use_container_width=True):
+        st.session_state['active_race_id'] = generated_direct_id
 
 # ---------------------------------------------------------
 # Results Render
