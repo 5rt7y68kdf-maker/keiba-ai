@@ -203,7 +203,7 @@ def clean_text(el):
     return re.sub(r'\s+', ' ', el.text).strip()
 
 def generate_static_schedule(is_sunday, year='2026'):
-    day_code = '0409' if is_sunday else '0408'
+    day_code = '0410' if is_sunday else '0409'
     venues = [('中山', '06'), ('中京', '07'), ('阪神', '09')]
     races = []
     for v_name, v_code in venues:
@@ -229,17 +229,9 @@ def fetch_race_list_by_date(dt_str):
     year_str = clean_date[:4] if len(clean_date) >= 4 else str(datetime.datetime.now(JST).year)
     races_dict = {}
 
-    # Query live netkeiba race list pages
-    urls = [
-        f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}",
-        "https://race.netkeiba.com/top/race_list.html",
-        "https://race.netkeiba.com/top/"
-    ]
-
-    for target_url in urls:
-        soup, _ = fetch_html(target_url)
-        if not soup: continue
-
+    target_url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}"
+    soup, _ = fetch_html(target_url)
+    if soup:
         for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
             noisy.decompose()
 
@@ -270,9 +262,6 @@ def fetch_race_list_by_date(dt_str):
                     'venue': v_name,
                     'v_code': v_code
                 }
-
-        if races_dict and len(races_dict) >= 5:
-            break
 
     if races_dict and len(races_dict) >= 5:
         races = list(races_dict.values())
