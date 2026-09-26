@@ -213,6 +213,14 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
 # Scraping & Data Extraction Logic
 # ---------------------------------------------------------
 
+def extract_num(val):
+    if not val:
+        return 0
+    if isinstance(val, int):
+        return val
+    m = re.search(r'(\d+)', str(val))
+    return int(m.group(1)) if m else 0
+
 def get_jra_waku(umaban, total_horses):
     if total_horses <= 8:
         return umaban
@@ -348,6 +356,7 @@ def parse_db_netkeiba(soup):
         if d['枠番'] is None or d['枠番'] < 1 or d['枠番'] > 8:
             d['枠番'] = get_jra_waku(d['馬番'], total_horses)
 
+    data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
     return data_list
 
 def parse_race_netkeiba(soup):
@@ -426,6 +435,7 @@ def parse_race_netkeiba(soup):
             u = d.get('馬番', 1)
             d['枠番'] = get_jra_waku(u, total_horses)
 
+    data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
     return data_list
 
 def fetch_odds_data(clean_id):
@@ -909,7 +919,7 @@ elif data_list:
                 categories = ['スピード指数', '騎手力', '馬体気配', '展開バイアス', '総合AIパワー']
                 
                 for h_opt in sel_radar:
-                    u_no = int(h_opt.split('番')[0])
+                    u_no = extract_num(h_opt)
                     match_h = next((d for d in data_list if d['馬番'] == u_no), None)
                     if match_h:
                         vals = [
@@ -1032,8 +1042,8 @@ elif data_list:
             is_multi = st.checkbox("🔀 マルチ機能有効（軸馬がどの着順に入っても的中する組み合わせに全展開）", value=True)
 
         with f_col2:
-            j_nos = [int(h.split('番')[0]) for h in jiku_horses]
-            a_nos = [int(h.split('番')[0]) for h in aite_horses]
+            j_nos = [extract_num(h) for h in jiku_horses]
+            a_nos = [extract_num(h) for h in aite_horses]
             
             all_combos_text = []
             total_points = 0
@@ -1102,7 +1112,7 @@ elif data_list:
             box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
 
         with b_col2:
-            b_nos = [int(h.split('番')[0]) for h in box_horses]
+            b_nos = [extract_num(h) for h in box_horses]
             all_combos_text = []
             total_points = 0
 
@@ -1146,9 +1156,9 @@ elif data_list:
             f3_h = st.multiselect("3頭目 / 3着候補 (3連系のみ)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f3_def)
 
         with fmt_col2:
-            n1 = [int(h.split('番')[0]) for h in f1_h]
-            n2 = [int(h.split('番')[0]) for h in f2_h]
-            n3 = [int(h.split('番')[0]) for h in f3_h]
+            n1 = [extract_num(h) for h in f1_h]
+            n2 = [extract_num(h) for h in f2_h]
+            n3 = [extract_num(h) for h in f3_h]
 
             all_combos_text = []
             total_points = 0
