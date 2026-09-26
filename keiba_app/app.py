@@ -167,7 +167,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -277,7 +277,7 @@ def parse_db_netkeiba(soup):
             if m: umaban = int(m.group(1))
 
         if umaban is None and len(tds) >= 3:
-            txt2 = tds[1].text.strip()
+            txt2 = tds.text.strip()
             m2 = re.search(r'(\d+)', txt2)
             if m2 and 1 <= int(m2.group(1)) <= 18:
                 umaban = int(m2.group(1))
@@ -394,7 +394,7 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if umaban is None and len(td_list) >= 2:
-            txt1 = td_list[1].text.strip()
+            txt1 = td_list.text.strip()
             if txt1.isdigit() and 1 <= int(txt1) <= 18:
                 umaban = int(txt1)
 
@@ -906,7 +906,7 @@ elif data_list:
                         ))
                 
                 fig_radar.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=)),
+                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
                     showlegend=True,
                     margin=dict(l=40, r=40, t=30, b=30),
                     height=380
@@ -1032,34 +1032,34 @@ elif data_list:
                                     combos.append(f"{a} ➔ {j_no}")
                 elif t_type == "3連複":
                     if len(j_nos) == 1:
-                        j_no = j_nos
+                        j_no = j_nos[0]
                         for p in itertools.combinations(a_nos, 2):
                             if j_no not in p:
-                                c_s = sorted([j_no, p, p])
-                                combos.append(f"{c_s} - {c_s} - {c_s}")
+                                c_s = sorted([j_no, p[0], p[1]])
+                                combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
                     elif len(j_nos) == 2:
                         for a in a_nos:
                             if a not in j_nos:
-                                c_s = sorted([j_nos, j_nos, a])
-                                combos.append(f"{c_s} - {c_s} - {c_s}")
+                                c_s = sorted([j_nos[0], j_nos[1], a])
+                                combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
                 elif t_type == "3連単":
                     if len(j_nos) == 1:
-                        j_no = j_nos
+                        j_no = j_nos[0]
                         for p in itertools.permutations(a_nos, 2):
                             if j_no not in p:
                                 if is_multi:
-                                    for perm in itertools.permutations([j_no, p, p], 3):
-                                        combos.append(f"{perm} ➔ {perm} ➔ {perm}")
+                                    for perm in itertools.permutations([j_no, p[0], p[1]], 3):
+                                        combos.append(f"{perm[0]} ➔ {perm[1]} ➔ {perm[2]}")
                                 else:
-                                    combos.append(f"{j_no} ➔ {p} ➔ {p}")
+                                    combos.append(f"{j_no} ➔ {p[0]} ➔ {p[1]}")
                     elif len(j_nos) == 2:
                         for a in a_nos:
                             if a not in j_nos:
                                 if is_multi:
-                                    for perm in itertools.permutations([j_nos, j_nos, a], 3):
-                                        combos.append(f"{perm} ➔ {perm} ➔ {perm}")
+                                    for perm in itertools.permutations([j_nos[0], j_nos[1], a], 3):
+                                        combos.append(f"{perm[0]} ➔ {perm[1]} ➔ {perm[2]}")
                                 else:
-                                    combos.append(f"{j_nos} ➔ {j_nos} ➔ {a}")
+                                    combos.append(f"{j_nos[0]} ➔ {j_nos[1]} ➔ {a}")
 
                 combos = sorted(list(dict.fromkeys(combos)))
                 pts = len(combos)
@@ -1076,7 +1076,7 @@ elif data_list:
     elif strat_mode == "🎲 ボックス（対象馬全選択）":
         b_col1, b_col2 = st.columns(2)
         with b_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3连複"])
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
             box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:5]]
             box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
 
@@ -1092,14 +1092,14 @@ elif data_list:
                         combos.append(f"{min(p)} - {max(p)}")
                 elif t_type == "馬単":
                     for p in itertools.permutations(b_nos, 2):
-                        combos.append(f"{p} ➔ {p}")
+                        combos.append(f"{p[0]} ➔ {p[1]}")
                 elif t_type == "3連複":
                     for p in itertools.combinations(b_nos, 3):
                         c_s = sorted(p)
-                        combos.append(f"{c_s} - {c_s} - {c_s}")
+                        combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
                 elif t_type == "3連単":
                     for p in itertools.permutations(b_nos, 3):
-                        combos.append(f"{p} ➔ {p} ➔ {p}")
+                        combos.append(f"{p[0]} ➔ {p[1]} ➔ {p[2]}")
 
                 pts = len(combos)
                 total_points += pts
@@ -1146,7 +1146,7 @@ elif data_list:
                                 pair = tuple(sorted([a, b]))
                                 if pair not in seen:
                                     seen.add(pair)
-                                    combos.append(f"{pair} - {pair}")
+                                    combos.append(f"{pair[0]} - {pair[1]}")
                 elif t_type == "3連単":
                     for a in n1:
                         for b in n2:
@@ -1162,7 +1162,7 @@ elif data_list:
                                     trio = tuple(sorted([a, b, c]))
                                     if trio not in seen:
                                         seen.add(trio)
-                                        combos.append(f"{trio} - {trio} - {trio}")
+                                        combos.append(f"{trio[0]} - {trio[1]} - {trio[2]}")
 
                 pts = len(combos)
                 total_points += pts
