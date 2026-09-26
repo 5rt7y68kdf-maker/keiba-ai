@@ -234,78 +234,62 @@ def generate_static_schedule(is_sunday, year='2024'):
             })
     return races
 
-def fetch_race_list_by_date(dt_str, depth=0):
+def fetch_race_list_by_date(dt_str):
     clean_date = re.sub(r'\D', '', str(dt_str))
     races_dict = {}
 
+    urls_to_try = []
     if len(clean_date) == 8:
-        target_url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}"
+        urls_to_try.append(f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}")
+    urls_to_try.append("https://race.netkeiba.com/top/race_list.html")
+    urls_to_try.append("https://race.netkeiba.com/top/")
+
+    for target_url in urls_to_try:
         soup, _ = fetch_html(target_url)
-        
-        if soup:
-            for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
-                noisy.decompose()
+        if not soup: continue
 
-            main_box = soup.select_one('div.RaceList_Data') or soup.select_one('div.Race_List') or soup
-            for a in main_box.find_all('a'):
-                href = a.get('href', '')
-                m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
-                if not m: continue
+        for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
+            noisy.decompose()
 
-                r_id = m.group(1)
-                v_code = r_id[4:6]
-                if v_code not in VENUE_CODE_TO_NAME: continue
+        main_box = soup.select_one('div.RaceList_Data') or soup.select_one('div.Race_List') or soup
+        for a in main_box.find_all('a'):
+            href = a.get('href', '')
+            m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
+            if not m: continue
 
-                v_name = VENUE_CODE_TO_NAME[v_code]
-                r_num = int(r_id[10:12])
+            r_id = m.group(1)
+            v_code = r_id[4:6]
+            if v_code not in VENUE_CODE_TO_NAME: continue
 
-                raw_text = clean_text(a)
-                clean_r_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
-                clean_r_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|予想|俺プロ)', '', clean_r_name).strip()
-                if not clean_r_name or len(clean_r_name) < 2:
-                    clean_r_name = f"第{r_num}レース"
+            v_name = VENUE_CODE_TO_NAME[v_code]
+            r_num = int(r_id[10:12])
 
-                if r_id not in races_dict or len(clean_r_name) > len(races_dict[r_id]['name']):
-                    races_dict[r_id] = {
-                        'id': r_id,
-                        'r_num': r_num,
-                        'name': clean_r_name,
-                        'venue': v_name,
-                        'v_code': v_code
-                    }
+            raw_text = clean_text(a)
+            clean_r_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+            clean_r_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|予想|俺プロ)', '', clean_r_name).strip()
+            if not clean_r_name or len(clean_r_name) < 2:
+                clean_r_name = f"第{r_num}レース"
+
+            if r_id not in races_dict or len(clean_r_name) > len(races_dict[r_id]['name']):
+                races_dict[r_id] = {
+                    'id': r_id,
+                    'r_num': r_num,
+                    'name': clean_r_name,
+                    'venue': v_name,
+                    'v_code': v_code
+                }
+
+        if races_dict:
+            break
 
     if races_dict:
         races = list(races_dict.values())
         races.sort(key=lambda x: (x['v_code'], x['r_num']))
         return races, None
 
-    # Fallback to 2024 live netkeiba dates ONLY if depth == 0
-    if depth == 0:
-        try:
-            d_obj = datetime.datetime.strptime(clean_date, "%Y%m%d").date()
-            is_sunday = (d_obj.weekday() == 6)
-        except Exception:
-            is_sunday = clean_date.endswith('27') or clean_date.endswith('29')
-        
-        real_date = "20240929" if is_sunday else "20240928"
-        if real_date != clean_date:
-            races, err = fetch_race_list_by_date(real_date, depth=1)
-            if races:
-                return races, None
+    races = generate_static_schedule(clean_date)
+    return races, None
 
-    # Static fallback guaranteed without any recursion
-    try:
-        d_obj = datetime.datetime.strptime(clean_date, "%Y%m%d").date()
-        is_sunday = (d_obj.weekday() == 6)
-    except Exception:
-        is_sunday = clean_date.endswith('27') or clean_date.endswith('29')
-
-    static_races = generate_static_schedule(is_sunday)
-    return static_races, None
-
-# ---------------------------------------------------------
-# Scraping & Data Extraction Logic
-# ---------------------------------------------------------
 def parse_db_netkeiba(soup):
     main_table = soup.select_one('table.race_table_01') or soup.select_one('table[class*="race_table"]') or soup.select_one('table.Shutuba_Table')
     if not main_table:
@@ -479,30 +463,52 @@ def parse_race_netkeiba(soup):
         if umaban is None:
             umaban = idx
 
+        # 1. Parse Horse Weight strictly
+        weight_td = r.select_one('td.Weight') or r.select_one('td[class*="Weight"]') or r.select_one('td[class*="batai"]')
+        if weight_td:
+            p_str, p_diff = parse_horse_weight_str(weight_td.text.strip())
+            if p_str != "未計量 (発走前)":
+                hw_str = p_str
+                hw_diff = p_diff
+
+        # 2. Parse Odds strictly
+        odds_td = r.select_one('td.Odds') or r.select_one('td[class*="Odds"]') or r.select_one('td[class*="odds"]')
+        if odds_td:
+            m_o = re.search(r'(\d+\.\d+)', odds_td.text.strip())
+            if m_o:
+                try: odds_val = float(m_o.group(1))
+                except ValueError: pass
+
+        # 3. Parse Popularity strictly
+        pop_td = r.select_one('td.Popular') or r.select_one('td[class*="Popular"]') or r.select_one('td[class*="pop"]') or r.select_one('td[class*="ninki"]')
+        if pop_td:
+            m_p = re.search(r'(\d+)', pop_td.text.strip())
+            if m_p:
+                try: pop_val = int(m_p.group(1))
+                except ValueError: pass
+
+        # Fallback loop if selectors didn't catch cells (excluding Weight & Popularity cells for Odds)
         for td in td_list:
             cls_str = ' '.join([c.lower() for c in td.get('class', [])])
             text = td.text.strip()
 
-            # Popularity Parsing (Isolated)
-            if 'popular' in cls_str or 'ninki' in cls_str or 'pop' in cls_str:
+            if hw_str == "未計量 (発走前)" and ('weight' in cls_str or 'batai' in cls_str or re.search(r'\d{3,4}\s*\(', text)):
+                p_str, p_diff = parse_horse_weight_str(text)
+                if p_str != "未計量 (発走前)":
+                    hw_str = p_str
+                    hw_diff = p_diff
+
+            if pop_val == "未確定" and ('popular' in cls_str or 'ninki' in cls_str or 'pop' in cls_str):
                 m_p = re.search(r'(\d+)', text)
                 if m_p:
                     try: pop_val = int(m_p.group(1))
                     except ValueError: pass
 
-            # Odds Parsing (Strict - decimal point required, exclude popularity cells)
-            if 'odds' in cls_str or 'txt_r' in cls_str or 'txt_c' in cls_str:
-                if 'pop' not in cls_str and 'ninki' not in cls_str:
-                    m_o = re.search(r'(\d+\.\d+)', text)
-                    if m_o:
-                        try: odds_val = float(m_o.group(1))
-                        except ValueError: pass
-
-            if 'weight' in cls_str or 'batai' in cls_str or re.search(r'\d{3,4}\s*\(', text):
-                p_str, p_diff = parse_horse_weight_str(text)
-                if p_str != "未計量 (発走前)":
-                    hw_str = p_str
-                    hw_diff = p_diff
+            if odds_val == "未確定" and 'odds' in cls_str and not any(k in cls_str for k in ['weight', 'batai', 'pop', 'ninki', 'jockey', 'horse', 'waku']):
+                m_o = re.search(r'(\d+\.\d+)', text)
+                if m_o:
+                    try: odds_val = float(m_o.group(1))
+                    except ValueError: pass
 
         seen_horses.add(horse_name)
 
