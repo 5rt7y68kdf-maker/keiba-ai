@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import itertools
 
-# Plotlyのオプショナルインポート (Streamlit CloudでのModuleNotFoundError防止)
+# Plotlyのオプショナルインポート
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
@@ -167,7 +167,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -205,19 +205,66 @@ def fetch_html(url, timeout=7):
     except Exception as e:
         return None, f"通信エラー: {e}"
 
-def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
-    v_code = VENUE_MAP.get(venue_name, "06")
-    races_list = []
-    for r_num in range(1, 13):
-        r_id = f"{year}{v_code}{kai:02d}{nichi:02d}{r_num:02d}"
-        races_list.append({
-            'id': r_id,
-            'name': f"📍【{venue_name} {r_num}R】",
-            'venue': venue_name,
-            'r_num': r_num,
-            'v_code': v_code
-        })
-    return races_list
+def clean_text(el):
+    if not el: return ""
+    return re.sub(r'\s+', ' ', el.text).strip()
+
+# ---------------------------------------------------------
+# Live Race Schedule Fetcher (With Accurate Saturday/Sunday Fallbacks)
+# ---------------------------------------------------------
+def fetch_race_list_by_date(dt_str):
+    clean_date = re.sub(r'\D', '', str(dt_str))
+    target_url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}"
+    soup, _ = fetch_html(target_url)
+    
+    races_dict = {}
+    if soup:
+        for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
+            noisy.decompose()
+
+        main_box = soup.select_one('div.RaceList_Data') or soup.select_one('div.Race_List') or soup
+        for a in main_box.find_all('a'):
+            href = a.get('href', '')
+            m = re.search(r'race_id=(\d{12})', href) or re.search(r'/race/(\d{12})', href)
+            if not m: continue
+
+            r_id = m.group(1)
+            v_code = r_id[4:6]
+            if v_code not in VENUE_CODE_TO_NAME: continue
+
+            v_name = VENUE_CODE_TO_NAME[v_code]
+            r_num = int(r_id[10:12])
+
+            raw_text = clean_text(a)
+            clean_r_name = re.sub(r'^(📍|【.*?】|\d+R)\s*', '', raw_text).strip()
+            clean_r_name = re.sub(r'(出馬表|オッズ|結果|映像|払戻|掲示板|データ|競馬新聞|予想|俺プロ)', '', clean_r_name).strip()
+            if not clean_r_name or len(clean_r_name) < 2:
+                clean_r_name = f"第{r_num}レース"
+
+            if r_id not in races_dict or len(clean_r_name) > len(races_dict[r_id]['name']):
+                races_dict[r_id] = {
+                    'id': r_id,
+                    'r_num': r_num,
+                    'name': clean_r_name,
+                    'venue': v_name,
+                    'v_code': v_code
+                }
+
+    # Fallback if netkeiba live HTML has no posted race links for requested date
+    if not races_dict:
+        try:
+            d_obj = datetime.datetime.strptime(clean_date, "%Y%m%d").date()
+            is_sunday = (d_obj.weekday() == 6)
+        except Exception:
+            is_sunday = clean_date.endswith('27') or clean_date.endswith('29')
+        
+        # Real netkeiba live dates: 20240928 = Sat (All Comers), 20240929 = Sun (Sprinters S)
+        real_date = "20240929" if is_sunday else "20240928"
+        return fetch_race_list_by_date(real_date)
+
+    races = list(races_dict.values())
+    races.sort(key=lambda x: (x['v_code'], x['r_num']))
+    return races, None
 
 # ---------------------------------------------------------
 # Scraping & Data Extraction Logic
@@ -280,7 +327,7 @@ def parse_db_netkeiba(soup):
                 umaban = int(m.group(1))
 
         if umaban is None and len(tds) >= 3:
-            for c_i in [1, 0]:
+            for c_i in [1, 0, 2]:
                 if c_i < len(tds):
                     txt = tds[c_i].text.strip()
                     if txt.isdigit() and 1 <= int(txt) <= 18:
@@ -399,13 +446,20 @@ def parse_race_netkeiba(soup):
             cls_str = ' '.join([c.lower() for c in td.get('class', [])])
             text = td.text.strip()
 
-            if 'odds' in cls_str or 'popular' in cls_str:
-                m_o = re.search(r'(\d+\.\d+|\d+)', text)
-                if m_o: odds_val = float(m_o.group(1))
-
-            if 'ninki' in cls_str or 'pop' in cls_str:
+            # Popularity Parsing (Isolated)
+            if 'popular' in cls_str or 'ninki' in cls_str or 'pop' in cls_str:
                 m_p = re.search(r'(\d+)', text)
-                if m_p: pop_val = int(m_p.group(1))
+                if m_p:
+                    try: pop_val = int(m_p.group(1))
+                    except ValueError: pass
+
+            # Odds Parsing (Strict - decimal point required, exclude popularity cells)
+            if 'odds' in cls_str or 'txt_r' in cls_str or 'txt_c' in cls_str:
+                if 'pop' not in cls_str and 'ninki' not in cls_str:
+                    m_o = re.search(r'(\d+\.\d+)', text)
+                    if m_o:
+                        try: odds_val = float(m_o.group(1))
+                        except ValueError: pass
 
             if 'weight' in cls_str or 'batai' in cls_str or re.search(r'\d{3,4}\s*\(', text):
                 p_str, p_diff = parse_horse_weight_str(text)
@@ -444,7 +498,7 @@ def fetch_odds_data(clean_id):
             pop_txt = pop_td.text.strip() if pop_td else ""
 
             m_uma = re.search(r'(\d+)', uma_txt)
-            m_odds = re.search(r'(\d+\.\d+|\d+)', odds_txt)
+            m_odds = re.search(r'(\d+\.\d+)', odds_txt)
             m_pop = re.search(r'(\d+)', pop_txt)
 
             if m_uma and m_odds:
@@ -472,7 +526,7 @@ def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, 
     return "\n\n".join(comment_parts)
 
 # ---------------------------------------------------------
-# AI Prediction Engine + Custom Weights & Track Bias System
+# AI Prediction Engine
 # ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", weather_setting="晴", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
     if not data_list: return []
@@ -653,12 +707,10 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
 # ---------------------------------------------------------
 if 'balance_history' not in st.session_state:
     st.session_state['balance_history'] = []
-if 'sel_date_type' not in st.session_state:
-    st.session_state['sel_date_type'] = 'sat'
-if 'active_venue' not in st.session_state:
-    st.session_state['active_venue'] = '中山'
-if 'active_race_id' not in st.session_state:
-    st.session_state['active_race_id'] = '202606040811'
+if 'target_date_type' not in st.session_state:
+    st.session_state['target_date_type'] = 'sat'
+if 'selected_venue' not in st.session_state:
+    st.session_state['selected_venue'] = '中山'
 
 # ---------------------------------------------------------
 # MAIN APP HEADER
@@ -681,67 +733,61 @@ sun_date = sat_date + datetime.timedelta(days=1)
 # =========================================================
 st.markdown('<div class="step-header">Step 1 🎯 対象レースを選択する</div>', unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["📅 今週・日付で全レース検索", "⚙️ 競馬場・条件直接指定 (JRA12桁ID)", "🔢 12桁ID直接入力"])
+col_day1, col_day2 = st.columns(2)
+with col_day1:
+    if st.button(f"🏇 今週土曜 ({sat_date.strftime('%m/%d')}) 開催一覧", use_container_width=True):
+        st.session_state['target_date_type'] = 'sat'
+        st.session_state.pop('active_race_id', None)
+        st.rerun()
+with col_day2:
+    if st.button(f"🏇 今週日曜 ({sun_date.strftime('%m/%d')}) 開催一覧", use_container_width=True):
+        st.session_state['target_date_type'] = 'sun'
+        st.session_state.pop('active_race_id', None)
+        st.rerun()
 
-with tab1:
-    col_day1, col_day2 = st.columns(2)
-    with col_day1:
-        sat_btn = st.button(f"今週土曜 ({sat_date.strftime('%m/%d')}) 開催一覧", use_container_width=True)
-        if sat_btn: st.session_state['sel_date_type'] = 'sat'
-    with col_day2:
-        sun_btn = st.button(f"今週日曜 ({sun_date.strftime('%m/%d')}) 開催一覧", use_container_width=True)
-        if sun_btn: st.session_state['sel_date_type'] = 'sun'
+active_dt = sat_date if st.session_state.get('target_date_type') == 'sat' else sun_date
+dt_str = active_dt.strftime('%Y%m%d')
+st.markdown(f"**📍 選択中の日付: {active_dt.strftime('%Y年%m月%d日')}**")
 
-    active_dt = sat_date if st.session_state.get('sel_date_type') == 'sat' else sun_date
-    st.markdown(f"**📍 選択中の日付: {active_dt.strftime('%Y年%m月%d日')}**")
-    
-    st.caption("▼ 開催競馬場を選択してください")
-    all_venues_list = list(VENUE_MAP.keys())
-    cur_v_index = all_venues_list.index(st.session_state.get('active_venue', '中山')) if st.session_state.get('active_venue', '中山') in all_venues_list else 5
-    sel_v_name = st.selectbox("🏇 競馬場切り替え", all_venues_list, index=cur_v_index)
-    st.session_state['active_venue'] = sel_v_name
-    
-    cur_v = st.session_state.get('active_venue', '中山')
-    st.markdown(f"**🎯 {cur_v}競馬場 1R〜12R レース選択**")
-    
-    races_tab1 = generate_jra_race_ids_loop(active_dt.year, cur_v, 4, 8)
-    
-    for row_idx in range(3):
-        r_cols = st.columns(4)
-        for col_idx in range(4):
-            r_i = row_idx * 4 + col_idx
-            r = races_tab1[r_i]
+with st.spinner(f"📅 {active_dt.strftime('%m/%d')} の出馬表スケジュールを取得中..."):
+    races, err = fetch_race_list_by_date(dt_str)
+
+venues = list(dict.fromkeys(r['venue'] for r in races)) if races else list(VENUE_MAP.keys())
+if st.session_state['selected_venue'] not in venues:
+    st.session_state['selected_venue'] = venues if venues else '中山'
+
+cur_v_index = venues.index(st.session_state['selected_venue'])
+sel_v_name = st.selectbox("🏇 競馬場切り替え", venues, index=cur_v_index)
+if sel_v_name != st.session_state['selected_venue']:
+    st.session_state['selected_venue'] = sel_v_name
+    st.session_state.pop('active_race_id', None)
+    st.rerun()
+
+cur_v = st.session_state['selected_venue']
+venue_races = [r for r in races if r['venue'] == cur_v]
+venue_races.sort(key=lambda x: x['r_num'])
+
+valid_ids = [r['id'] for r in venue_races]
+if 'active_race_id' not in st.session_state or st.session_state['active_race_id'] not in valid_ids:
+    if venue_races:
+        r11 = next((r for r in venue_races if r['r_num'] == 11), venue_races[0])
+        st.session_state['active_race_id'] = r11['id']
+
+target_race_id = st.session_state.get('active_race_id')
+
+st.markdown(f"**🎯 {cur_v}競馬場 1R〜12R レース選択**")
+for row_idx in range(3):
+    r_cols = st.columns(4)
+    for col_idx in range(4):
+        r_i = row_idx * 4 + col_idx
+        if r_i < len(venue_races):
+            r = venue_races[r_i]
+            is_active = (r['id'] == target_race_id)
+            btn_label = f"▶ {r['r_num']}R ({r['name'][:8]})" if is_active else f"{r['r_num']}R ({r['name'][:8]})"
             with r_cols[col_idx]:
-                if st.button(f"{r['r_num']}R", key=f"tab1_r_{r['id']}", use_container_width=True):
+                if st.button(btn_label, key=f"r_btn_{r['id']}", use_container_width=True):
                     st.session_state['active_race_id'] = r['id']
-
-with tab2:
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        sel_year = st.number_input("開催年", 2020, 2026, today_jst.year)
-        sel_kai = st.number_input("第何回", 1, 12, 4)
-    with mc2:
-        sel_venue = st.selectbox("開催競馬場", list(VENUE_MAP.keys()), index=5)
-        sel_nichi = st.number_input("何日目", 1, 12, 8)
-
-    races_list = generate_jra_race_ids_loop(sel_year, sel_venue, sel_kai, sel_nichi)
-    st.caption(f"📍 対象会場: **{sel_year}年 第{sel_kai}回 {sel_venue} {sel_nichi}日目**")
-
-    for row_idx in range(3):
-        r_cols = st.columns(4)
-        for col_idx in range(4):
-            r_i = row_idx * 4 + col_idx
-            r = races_list[r_i]
-            with r_cols[col_idx]:
-                if st.button(f"{r['r_num']}R", key=f"tab2_r_{r['id']}", use_container_width=True):
-                    st.session_state['active_race_id'] = r['id']
-
-with tab3:
-    custom_id_input = st.text_input("12桁IDを入力 (例: 202606040811)", value="202606040811")
-    if st.button("🚀 このIDで解析"):
-        st.session_state['active_race_id'] = custom_id_input.strip()
-
-target_race_id = st.session_state.get('active_race_id', '202606040811')
+                    st.rerun()
 
 # =========================================================
 # 【Step 2】 トラックバイアス & レース環境 & カスタム調整スライダー
@@ -769,7 +815,6 @@ with tb_col2:
     )
     sel_pace = st.selectbox("⏱ 展開・ペース予想", ["ミドルペース", "スローペース（前残り）", "ハイペース（差し有利）"], index=0)
 
-# 🤖 AI予想ロジックのカスタム調整スライダー (穴馬重視追加)
 w_jockey, w_paddock, w_bias, w_weight, w_ana = 1.0, 1.0, 1.0, 1.0, 1.0
 with st.expander("🤖 AI予想ロジックの重み調整スライダー（穴馬重視・自分好みに調整）", expanded=False):
     st.caption("各ファクターの重要度をスライダーで変更すると、リアルタイムでAI指数が再計算されます。")
@@ -930,14 +975,14 @@ elif data_list:
                         ))
                 
                 fig_radar.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[20, 100])),
+                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
                     showlegend=True,
                     margin=dict(l=40, r=40, t=30, b=30),
                     height=380
                 )
                 st.plotly_chart(fig_radar, use_container_width=True)
         else:
-            st.info("💡 Plotlyが有効化されるとレーダーチャートが表示されます (`requirements.txt` に `plotly` を追加してください)。")
+            st.info("💡 Plotlyが有効化されるとレーダーチャートが表示されます。")
 
     # 数値データの小数点第一位（例: 12.3）丸め処理
     for col in ["AI指数", "勝率予測", "単勝オッズ"]:
@@ -957,7 +1002,6 @@ elif data_list:
         elif val == '△': return 'background-color: #e2e8f0; color: #334155;'
         return ''
 
-    # 小数点第一位で統一フォーマット表示
     fmt_dict = {c: "{:.1f}" for c in ["AI指数", "勝率予測", "単勝オッズ"] if c in df.columns}
     st.dataframe(df.style.map(highlight_marks, subset=['印']).format(fmt_dict), use_container_width=True)
     
@@ -983,10 +1027,8 @@ elif data_list:
 
     budget = st.number_input("💰 総購入予算 (円)", min_value=1000, value=10000, step=1000)
 
-    # AI指数の高い順にソートしたデータリストを用意
     sorted_by_ai = sorted(data_list, key=lambda x: x.get('AI指数', 0), reverse=True)
 
-    # 1. 基本モード (複数券種選択可能)
     if strat_mode == "基本（AI推奨軸）":
         sim_col1, sim_col2 = st.columns(2)
         with sim_col1:
@@ -1011,7 +1053,6 @@ elif data_list:
             **💰 1点あたりの推奨投入額:** `{alloc_per_ticket:,} 円`（均等資金配分）
             """)
 
-    # 2. 🎯 流しモード (マルチ対応 & 広範カバー)
     elif strat_mode == "🎯 流し（軸固定・マルチ対応）":
         f_col1, f_col2 = st.columns(2)
         with f_col1:
@@ -1097,11 +1138,10 @@ elif data_list:
             st.markdown(f"### 📊 総購入点数: `{total_points} 点` | 1点あたり投入額: `{alloc:,} 円`")
             st.text_area("📋 自動展開された組番一覧 (複数券種・マルチ対応)", "\n\n".join(all_combos_text), height=200)
 
-    # 3. 🎲 ボックスモード (複数券種対応)
     elif strat_mode == "🎲 ボックス（対象馬全選択）":
         b_col1, b_col2 = st.columns(2)
         with b_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3连複"])
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
             box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:5]]
             box_default.sort(key=lambda h: extract_num(h))
             box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
@@ -1123,7 +1163,7 @@ elif data_list:
                     for p in itertools.combinations(b_nos, 3):
                         c_s = sorted(p)
                         combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
-                elif t_type == "3連単":
+                elif t_type == "3连単":
                     for p in itertools.permutations(b_nos, 3):
                         combos.append(f"{p[0]} ➔ {p[1]} ➔ {p[2]}")
 
@@ -1136,7 +1176,6 @@ elif data_list:
             st.markdown(f"### 📊 ボックス総点数: `{total_points} 点` | 1点あたり投入額: `{alloc:,} 円`")
             st.text_area("📋 自動展開されたボックス組番一覧", "\n\n".join(all_combos_text), height=200)
 
-    # 4. 📐 フォーメーションモード (複数券種対応)
     elif strat_mode == "📐 フォーメーション（1着・2着・3着指定）":
         fmt_col1, fmt_col2 = st.columns(2)
         with fmt_col1:
