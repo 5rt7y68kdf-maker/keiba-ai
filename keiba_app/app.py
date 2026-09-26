@@ -167,7 +167,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -220,7 +220,7 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
     return races_list
 
 # ---------------------------------------------------------
-# Scraping & Data Extraction Logic (No 枠番)
+# Scraping & Data Extraction Logic (厳密馬番セル抽出 v58)
 # ---------------------------------------------------------
 def parse_db_netkeiba(soup):
     main_table = soup.select_one('table.race_table_01') or soup.select_one('table[class*="race_table"]') or soup.select_one('table.Shutuba_Table')
@@ -281,7 +281,7 @@ def parse_db_netkeiba(soup):
                 umaban = int(m.group(1))
 
         if umaban is None and len(tds) >= 3:
-            for c_i in [2, 1]:
+            for c_i in [0, 1, 2]:
                 txt = tds[c_i].text.strip()
                 if txt.isdigit() and 1 <= int(txt) <= 18:
                     umaban = int(txt)
@@ -393,11 +393,12 @@ def parse_race_netkeiba(soup):
                 umaban = int(m_r.group(1))
 
         if umaban is None and len(td_list) >= 2:
-            for c_i in [1, 0]:
-                txt = td_list[c_i].text.strip()
-                if txt.isdigit() and 1 <= int(txt) <= 18:
-                    umaban = int(txt)
-                    break
+            for c_i in [0, 1, 2]:
+                if c_i < len(td_list):
+                    txt = td_list[c_i].text.strip()
+                    if txt.isdigit() and 1 <= int(txt) <= 18:
+                        umaban = int(txt)
+                        break
 
         if umaban is None:
             umaban = idx
@@ -469,14 +470,14 @@ def fetch_odds_data(clean_id):
 # ---------------------------------------------------------
 # AI Analysis Comment Generator Engine
 # ---------------------------------------------------------
-def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, pace_setting, track_bias_waku, track_bias_leg):
+def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, pace_setting, track_bias_waku, track_bias_leg, weather_setting="晴"):
     comment_parts = []
     jockey_h = honmei['騎手']
     j_eval = "トップジョッキー鞍上で勝負気配良好。" if any(j in jockey_h for j in TOP_JOCKEYS_S + TOP_JOCKEYS_A) else "主戦騎手とのコンビで一発に期待。"
     w_eval = "好調な馬体重を維持。" if honmei['体重増減'] in range(-4, 5) else "当日の気配に注目。"
     
     bias_desc = f"トラックバイアス（{track_bias_waku}・{track_bias_leg}）"
-    comment_parts.append(f"**【本命 ◎ {honmei['馬番']}番 {honmei['馬名']}】**\nAI指数**{honmei['AI指数']}**で最上位評価。{j_eval}{w_eval} {track_cond}馬場、{pace_setting}および{bias_desc}の好条件が揃い、軸としての信頼度は極めて高いです。")
+    comment_parts.append(f"**【本命 ◎ {honmei['馬番']}番 {honmei['馬名']}】**\nAI指数**{honmei['AI指数']}**で最上位評価。{j_eval}{w_eval} 天候【{weather_setting}】・{track_cond}馬場、{pace_setting}および{bias_desc}の好条件が揃い、軸としての信頼度は極めて高いです。")
     comment_parts.append(f"**【対抗 ◯ {taikou['馬番']}番 {taikou['馬名']} & 単穴 ▲ {tanana['馬番']}番 {tanana['馬名']}】**\n対抗の{taikou['馬名']}（{taikou['騎手']}）は勝率予測{taikou['勝率予測']}%で高次元で安定。単穴の{tanana['馬名']}は展開バイアスが向けば頭まで狙える一押しの穴馬です。")
     if ana_horse:
         comment_parts.append(f"**【🔥 激走穴馬 🔥 {ana_horse['馬番']}番 {ana_horse['馬名']}】**\n単勝{ana_horse['単勝オッズ']}倍（{ana_horse['人気']}人気）ながら、トラックバイアス補正とAI評価により高期待値を検出！高配当狙いの紐・穴軸に最適です。")
@@ -485,7 +486,7 @@ def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, 
 # ---------------------------------------------------------
 # AI Prediction Engine + Custom Weights & Track Bias System
 # ---------------------------------------------------------
-def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
+def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", weather_setting="晴", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
     if not data_list: return []
 
     has_real_odds = any(isinstance(d['単勝オッズ'], (int, float)) for d in data_list)
@@ -538,8 +539,9 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         p_bonus *= w_paddock
 
         cond_bonus = 0.0
-        if track_condition in ["重", "不良"]:
-            if d['馬番'] <= 4: cond_bonus += 3.0
+        if track_condition in ["重", "不良"] or weather_setting in ["雨", "小雨", "雪"]:
+            if d['馬番'] <= 6:
+                cond_bonus += 3.0
         
         pace_bonus = 0.0
         if pace_setting == "スローペース（前残り）":
@@ -613,7 +615,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
     return data_list
 
-def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
+def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", weather_setting="晴", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
     if len(clean_id) != 12:
         return None, "レースIDは12桁の数字で指定してください。"
 
@@ -648,6 +650,7 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
         pace_setting=pace_setting,
         track_bias_waku=track_bias_waku,
         track_bias_leg=track_bias_leg,
+        weather_setting=weather_setting,
         w_jockey=w_jockey,
         w_paddock=w_paddock,
         w_bias=w_bias,
@@ -755,7 +758,7 @@ target_race_id = st.session_state.get('active_race_id', '202606040811')
 # =========================================================
 # 【Step 2】 トラックバイアス & レース環境 & カスタム調整スライダー
 # =========================================================
-st.markdown('<div class="step-header">Step 2 🌦 トラックバイアス（馬場傾向）& 🤖 AI予想カスタム調整</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-header">Step 2 🌦 トラックバイアス（馬場傾向）・☀️ 天候 & 🤖 AI予想カスタム調整</div>', unsafe_allow_html=True)
 
 tb_col1, tb_col2 = st.columns(2)
 with tb_col1:
@@ -764,7 +767,11 @@ with tb_col1:
         ["フラット", "内有利 (1〜4番絶好)", "外有利 (10番以降伸びる)"],
         index=0
     )
-    track_cond = st.selectbox("🌦 馬場状態", ["良", "稍重", "重", "不良"], index=0)
+    tb_sub1, tb_sub2 = st.columns(2)
+    with tb_sub1:
+        sel_weather = st.selectbox("☀️ 天候・天気", ["晴", "曇", "小雨", "雨", "雪"], index=0)
+    with tb_sub2:
+        track_cond = st.selectbox("🌦 馬場状態", ["良", "稍重", "重", "不良"], index=0)
 
 with tb_col2:
     track_bias_leg = st.selectbox(
@@ -810,6 +817,7 @@ with st.spinner("出馬表・馬体重・オッズ・トラックバイアスを
         pace_setting=sel_pace,
         track_bias_waku=track_bias_waku,
         track_bias_leg=track_bias_leg,
+        weather_setting=sel_weather,
         w_jockey=w_jockey,
         w_paddock=w_paddock,
         w_bias=w_bias,
@@ -890,7 +898,7 @@ elif data_list:
             """, unsafe_allow_html=True)
 
     # AI展開・バイアス分析見解ボックス
-    ai_comment_text = generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, sel_pace, track_bias_waku, track_bias_leg)
+    ai_comment_text = generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, sel_pace, track_bias_waku, track_bias_leg, sel_weather)
     st.markdown(f"""
     <div class="ai-box">
         <div style="font-weight: 800; font-size: 1.1rem; margin-bottom: 6px;">🧠 AIトラックバイアス・展開総合分析コメント</div>
@@ -934,7 +942,7 @@ elif data_list:
                         ))
                 
                 fig_radar.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                    polar=dict(radialaxis=dict(visible=True, range=)),
                     showlegend=True,
                     margin=dict(l=40, r=40, t=30, b=30),
                     height=380
