@@ -184,7 +184,10 @@ def parse_horse_weight_str(txt):
 
 def fetch_html(url, timeout=7):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
     }
     try:
         resp = requests.get(url, headers=headers, timeout=timeout, verify=False)
@@ -507,31 +510,74 @@ def parse_race_netkeiba(soup):
     return data_list
 
 def fetch_odds_data(clean_id):
-    odds_url = f"https://race.netkeiba.com/odds/index.html?type=b1&race_id={clean_id}"
-    soup, _ = fetch_html(odds_url)
-    if not soup: return {}
-
     odds_map = {}
-    rows = soup.select('tr[id*="odds-"]') or soup.find_all('tr')
-    for r in rows:
-        uma_td = r.select_one('td.UmaBan') or r.select_one('td[class*="uma"]')
-        odds_td = r.select_one('td.Odds') or r.select_one('td[class*="odds"]')
-        pop_td = r.select_one('td.Popular') or r.select_one('td[class*="pop"]')
+    urls_to_check = [
+        f"https://race.netkeiba.com/odds/index.html?type=b1&race_id={clean_id}",
+        f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}"
+    ]
 
-        if uma_td and odds_td:
-            uma_txt = uma_td.text.strip()
-            odds_txt = odds_td.text.strip()
-            pop_txt = pop_td.text.strip() if pop_td else ""
+    for odds_url in urls_to_check:
+        soup, _ = fetch_html(odds_url)
+        if not soup: continue
 
-            m_uma = re.search(r'(\d+)', uma_txt)
-            m_odds = re.search(r'(\d+\.\d+)', odds_txt)
-            m_pop = re.search(r'(\d+)', pop_txt)
+        rows = soup.select('table[class*="Odds"] tr') or soup.select('tr[id*="odds-"]') or soup.find_all('tr')
+        for r in rows:
+            tds = r.find_all(['td', 'th'])
+            if len(tds) < 2: continue
 
-            if m_uma and m_odds:
-                u_num = int(m_uma.group(1))
-                o_val = float(m_odds.group(1))
-                p_val = int(m_pop.group(1)) if m_pop else "未確定"
-                odds_map[u_num] = {'odds': o_val, 'pop': p_val}
+            uma_num = None
+            odds_val = None
+            pop_val = "未確定"
+
+            # Parse strictly by selectors or text
+            uma_td = r.select_one('td.UmaBan') or r.select_one('td[class*="uma"]') or r.select_one('td.Umaban')
+            odds_td = r.select_one('td.Odds') or r.select_one('td[class*="odds"]') or r.select_one('td.Odds_Ninki')
+            pop_td = r.select_one('td.Popular') or r.select_one('td[class*="pop"]') or r.select_one('td.Ninki')
+
+            if uma_td:
+                m_u = re.search(r'(\d+)', uma_td.text.strip())
+                if m_u: uma_num = int(m_u.group(1))
+
+            if odds_td:
+                m_o = re.search(r'(\d+\.\d+)', odds_td.text.strip())
+                if m_o:
+                    try: odds_val = float(m_o.group(1))
+                    except ValueError: pass
+
+            if pop_td:
+                m_p = re.search(r'(\d+)', pop_td.text.strip())
+                if m_p:
+                    try: pop_val = int(m_p.group(1))
+                    except ValueError: pass
+
+            # Fallback iteration over tds
+            if uma_num is None or odds_val is None:
+                for td in tds:
+                    cls_str = ' '.join([c.lower() for c in td.get('class', [])])
+                    text = td.text.strip()
+
+                    if uma_num is None and ('uma' in cls_str or 'num' in cls_str):
+                        m_u = re.search(r'^(\d{1,2})$', text)
+                        if m_u and 1 <= int(m_u.group(1)) <= 18:
+                            uma_num = int(m_u.group(1))
+
+                    if odds_val is None and 'odds' in cls_str and 'pop' not in cls_str and 'ninki' not in cls_str and 'weight' not in cls_str:
+                        m_o = re.search(r'(\d+\.\d+)', text)
+                        if m_o:
+                            try: odds_val = float(m_o.group(1))
+                            except ValueError: pass
+
+                    if pop_val == "未確定" and ('pop' in cls_str or 'ninki' in cls_str):
+                        m_p = re.search(r'^(\d{1,2})$', text)
+                        if m_p:
+                            try: pop_val = int(m_p.group(1))
+                            except ValueError: pass
+
+            if uma_num is not None and odds_val is not None:
+                odds_map[uma_num] = {'odds': odds_val, 'pop': pop_val}
+
+        if odds_map:
+            break
 
     return odds_map
 
@@ -953,6 +999,14 @@ with st.expander("🐴 直前パドック気配・状態補正チェック（タ
 # 【Step 3】 AI解析結果 (最左AI印, 穴馬カード, レーダーチャート & 出馬表)
 # =========================================================
 st.markdown(f'<div class="step-header">Step 3 📊 AI解析結果 (対象レースID: {target_race_id})</div>', unsafe_allow_html=True)
+
+col_reload_odds, col_dummy_space = st.columns([1, 2])
+with col_reload_odds:
+    if st.button("🔄 リアルタイム最新オッズを即時更新・再取得", use_container_width=True):
+        st.session_state.pop('daily_map', None)
+        st.cache_data.clear() if hasattr(st, 'cache_data') else None
+        st.toast("⚡ 最新オッズを取得中...")
+        st.rerun()
 
 with st.spinner("出馬表・馬体重・オッズ・トラックバイアスを計算中..."):
     data_list, err = get_race_data_by_id(
