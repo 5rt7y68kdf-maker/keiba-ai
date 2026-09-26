@@ -8,20 +8,16 @@ import pandas as pd
 import numpy as np
 import itertools
 
-# Plotlyのオプショナルインポート
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
 
-# SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 日本標準時 JST
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
-# 全国10競馬場のコードマップ (中央競馬 JRA)
 VENUE_MAP = {
     "札幌": "01", "函館": "02", "福島": "03", "新潟": "04",
     "東京": "05", "中山": "06", "中京": "07", "京都": "08",
@@ -42,9 +38,6 @@ def extract_num(val):
     m = re.search(r'(\d+)', str(val))
     return int(m.group(1)) if m else 0
 
-# ---------------------------------------------------------
-# Streamlit Page Config & High-Contrast Light Clean Styling
-# ---------------------------------------------------------
 st.set_page_config(
     page_title="Kuina AI Racing Pro",
     page_icon="🏇",
@@ -157,9 +150,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# Helper Utilities & Parsers
-# ---------------------------------------------------------
 def parse_horse_weight_str(txt):
     if not txt:
         return "未計量 (発走前)", 0
@@ -209,9 +199,6 @@ def clean_text(el):
     if not el: return ""
     return re.sub(r'\s+', ' ', el.text).strip()
 
-# ---------------------------------------------------------
-# Live Race Schedule Fetcher (With Accurate Saturday/Sunday Fallbacks)
-# ---------------------------------------------------------
 def generate_static_schedule(is_sunday, year='2024'):
     day_code = '0409' if is_sunday else '0408'
     venues = [('中山', '06'), ('中京', '07'), ('阪神', '09')]
@@ -238,16 +225,9 @@ def fetch_race_list_by_date(dt_str):
     clean_date = re.sub(r'\D', '', str(dt_str))
     races_dict = {}
 
-    urls_to_try = []
-    if len(clean_date) == 8:
-        urls_to_try.append(f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}")
-    urls_to_try.append("https://race.netkeiba.com/top/race_list.html")
-    urls_to_try.append("https://race.netkeiba.com/top/")
-
-    for target_url in urls_to_try:
-        soup, _ = fetch_html(target_url)
-        if not soup: continue
-
+    target_url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}"
+    soup, _ = fetch_html(target_url)
+    if soup:
         for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
             noisy.decompose()
 
@@ -279,15 +259,18 @@ def fetch_race_list_by_date(dt_str):
                     'v_code': v_code
                 }
 
-        if races_dict:
-            break
-
-    if races_dict:
+    if races_dict and len(races_dict) >= 5:
         races = list(races_dict.values())
         races.sort(key=lambda x: (x['v_code'], x['r_num']))
         return races, None
 
-    races = generate_static_schedule(clean_date)
+    try:
+        d_obj = datetime.datetime.strptime(clean_date, "%Y%m%d").date()
+        is_sunday = (d_obj.weekday() == 6)
+    except Exception:
+        is_sunday = clean_date.endswith('27') or clean_date.endswith('29')
+
+    races = generate_static_schedule(is_sunday)
     return races, None
 
 def parse_db_netkeiba(soup):
@@ -432,7 +415,6 @@ def parse_race_netkeiba(soup):
         hw_str = "未計量 (発走前)"
         hw_diff = 0
 
-        # Extract umaban strictly from td cells first!
         for td in td_list:
             cls_list = [c.lower() for c in td.get('class', [])]
             cls_str = ' '.join(cls_list)
@@ -487,7 +469,7 @@ def parse_race_netkeiba(soup):
                 try: pop_val = int(m_p.group(1))
                 except ValueError: pass
 
-        # Fallback loop if selectors didn't catch cells (excluding Weight & Popularity cells for Odds)
+        # Fallback loop excluding weight & popular cells
         for td in td_list:
             cls_str = ' '.join([c.lower() for c in td.get('class', [])])
             text = td.text.strip()
@@ -552,9 +534,6 @@ def fetch_odds_data(clean_id):
 
     return odds_map
 
-# ---------------------------------------------------------
-# AI Analysis Comment Generator Engine
-# ---------------------------------------------------------
 def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, pace_setting, track_bias_waku, track_bias_leg, weather_setting="晴"):
     comment_parts = []
     jockey_h = honmei['騎手']
@@ -568,9 +547,6 @@ def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, 
         comment_parts.append(f"**【🔥 激走穴馬 🔥 {ana_horse['馬番']}番 {ana_horse['馬名']}】**\n単勝{ana_horse['単勝オッズ']}倍（{ana_horse['人気']}人気）ながら、トラックバイアス補正とAI評価により高期待値を検出！高配当狙いの紐・穴軸に最適です。")
     return "\n\n".join(comment_parts)
 
-# ---------------------------------------------------------
-# AI Prediction Engine
-# ---------------------------------------------------------
 def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", weather_setting="晴", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
     if not data_list: return []
 
@@ -598,11 +574,12 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
     for idx, d in enumerate(data_list):
         o_val = d.get('numeric_odds', 15.0)
-        raw_pop = d.get('人気', 10)
+        raw_p = d.get('人気', 10)
         try:
-            pop_val = float(raw_pop)
+            pop_val = float(raw_p)
         except (ValueError, TypeError):
             pop_val = 10.0
+
         base_score = max(5.0, 100.0 - (o_val * 3.5))
 
         jockey = d['騎手']
@@ -655,7 +632,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         bias_sum = (tb_waku_bonus + tb_leg_bonus + pace_bonus + cond_bonus) * w_bias
 
         ana_bonus = 0.0
-        if (isinstance(pop_val, int) and pop_val >= 5) or o_val >= 10.0:
+        if pop_val >= 5 or o_val >= 10.0:
             ana_bonus = min(15.0, (o_val * 0.4) + (pop_val * 0.8)) * w_ana
 
         ped_bonus = round((hash(d['馬名']) % 5), 1)
@@ -753,9 +730,6 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
     data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
     return data_list, None
 
-# ---------------------------------------------------------
-# Session State Initialization
-# ---------------------------------------------------------
 if 'balance_history' not in st.session_state:
     st.session_state['balance_history'] = []
 if 'target_date_type' not in st.session_state:
@@ -763,9 +737,6 @@ if 'target_date_type' not in st.session_state:
 if 'selected_venue' not in st.session_state:
     st.session_state['selected_venue'] = '中山'
 
-# ---------------------------------------------------------
-# MAIN APP HEADER
-# ---------------------------------------------------------
 st.markdown("""
 <div class="main-header">
     <h1>🏇 Kuina AI Racing Pro</h1>
@@ -821,8 +792,7 @@ venue_races.sort(key=lambda x: x['r_num'])
 valid_ids = [r['id'] for r in venue_races]
 if 'active_race_id' not in st.session_state or st.session_state['active_race_id'] not in valid_ids:
     if venue_races:
-        r11 = next((r for r in venue_races if r['r_num'] == 11), venue_races[0])
-        st.session_state['active_race_id'] = r11['id']
+        st.session_state['active_race_id'] = venue_races[0]['id']
 
 target_race_id = st.session_state.get('active_race_id')
 
@@ -1192,7 +1162,7 @@ elif data_list:
     elif strat_mode == "🎲 ボックス（対象馬全選択）":
         b_col1, b_col2 = st.columns(2)
         with b_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3连単"], default=["馬連", "3連複"])
             box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:5]]
             box_default.sort(key=lambda h: extract_num(h))
             box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
@@ -1214,7 +1184,7 @@ elif data_list:
                     for p in itertools.combinations(b_nos, 3):
                         c_s = sorted(p)
                         combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
-                elif t_type == "3连単":
+                elif t_type == "3連単":
                     for p in itertools.permutations(b_nos, 3):
                         combos.append(f"{p[0]} ➔ {p[1]} ➔ {p[2]}")
 
