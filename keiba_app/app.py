@@ -167,7 +167,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -220,14 +220,14 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
     return races_list
 
 # ---------------------------------------------------------
-# Scraping & Data Extraction Logic (No 枠番)
+# Scraping & Data Extraction Logic (重複完全排除 & 馬番昇順保証)
 # ---------------------------------------------------------
 def parse_db_netkeiba(soup):
-    table = soup.select_one('table.race_table_01')
-    if not table:
+    main_table = soup.select_one('table.race_table_01') or soup.select_one('table[class*="race_table"]') or soup.select_one('table.Shutuba_Table')
+    if not main_table:
         return []
 
-    header_tr = table.find('tr')
+    header_tr = main_table.find('tr')
     if not header_tr:
         return []
 
@@ -243,8 +243,11 @@ def parse_db_netkeiba(soup):
         elif '人気' in clean_h: col_map['pop'] = idx
         elif '体重' in clean_h or '馬体重' in clean_h: col_map['horse_weight'] = idx
 
-    rows = table.find_all('tr')[1:]
+    rows = main_table.find_all('tr')[1:]
     data_list = []
+    seen_horses = set()
+    seen_umaban = set()
+
     for r in rows:
         tds = r.find_all(['td', 'th'])
         if len(tds) < 4: continue
@@ -259,6 +262,7 @@ def parse_db_netkeiba(soup):
             horse_name = horse_a.text.strip() if horse_a else tds[name_idx].text.strip()
 
         if not horse_name or horse_name in ['馬名', '競走馬', '馬 名']: continue
+        if horse_name in seen_horses: continue
 
         jockey_name = "未定義"
         j_idx = col_map.get('jockey')
@@ -277,13 +281,21 @@ def parse_db_netkeiba(soup):
             if m: umaban = int(m.group(1))
 
         if umaban is None and len(tds) >= 3:
-            txt2 = tds[2].text.strip() if len(tds) > 2 else tds[1].text.strip()
-            m2 = re.search(r'(\d+)', txt2)
-            if m2 and 1 <= int(m2.group(1)) <= 18:
-                umaban = int(m2.group(1))
+            for td in tds[:3]:
+                txt2 = td.text.strip()
+                m2 = re.search(r'(\d+)', txt2)
+                if m2 and 1 <= int(m2.group(1)) <= 18:
+                    umaban = int(m2.group(1))
+                    break
 
-        if umaban is None:
-            umaban = len(data_list) + 1
+        if umaban is None or umaban in seen_umaban:
+            for u_cand in range(1, 19):
+                if u_cand not in seen_umaban:
+                    umaban = u_cand
+                    break
+
+        seen_horses.add(horse_name)
+        seen_umaban.add(umaban)
 
         weight_val = 55.0
         wt_idx = col_map.get('weight')
@@ -331,22 +343,30 @@ def parse_db_netkeiba(soup):
     return data_list
 
 def parse_race_netkeiba(soup):
-    for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
+    for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn, .RaceList_Table, .Pickup_Table'):
         noisy.decompose()
 
-    rows = soup.select('tr.HorseList') or soup.select('tr[class*="Horse"]')
-    if not rows:
-        rows = soup.find_all('tr')
+    main_table = soup.select_one('table.Shutuba_Table') or soup.select_one('table.race_table_01') or soup.select_one('table[class*="Shutuba"]') or soup.select_one('table[class*="race"]')
+    if main_table:
+        rows = main_table.select('tr.HorseList') or main_table.find_all('tr')
+    else:
+        rows = soup.select('tr.HorseList') or soup.select('tr[class*="Horse"]') or soup.find_all('tr')
 
     data_list = []
+    seen_horses = set()
+    seen_umaban = set()
+
     for idx, r in enumerate(rows, start=1):
         td_list = r.find_all('td')
-        if len(td_list) < 3: continue
+        if len(td_list) < 2: continue
 
         horse_a = r.select_one('a[href*="/horse/"]') or r.select_one('.HorseName a') or r.select_one('span.Horse_Name a')
         if not horse_a: continue
         horse_name = horse_a.text.strip()
         if not horse_name or horse_name in ['馬名', '競走馬', '馬 名']: continue
+
+        if horse_name in seen_horses:
+            continue
 
         jockey_a = r.select_one('a[href*="/jockey/"]') or r.select_one('.Jockey a')
         jockey_name = jockey_a.text.strip() if jockey_a else "未定義"
@@ -378,7 +398,7 @@ def parse_race_netkeiba(soup):
                     u_cand = int(m_u.group(1))
                     if 1 <= u_cand <= 18:
                         umaban = u_cand
-                elif ('umaban' in cls_str or 'td_num' in cls_str or 'num' in cls_str) and text.isdigit():
+                elif ('umaban' in cls_str or 'td_num' in cls_str or 'num' in cls_str or 'uma' in cls_str) and text.isdigit():
                     u_cand = int(text)
                     if 1 <= u_cand <= 18:
                         umaban = u_cand
@@ -402,13 +422,20 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if umaban is None and len(td_list) >= 2:
-            txt1 = td_list[1].text.strip()
-            m1 = re.search(r'(\d+)', txt1)
-            if m1 and 1 <= int(m1.group(1)) <= 18:
-                umaban = int(m1.group(1))
+            for td in td_list[:3]:
+                txt = td.text.strip()
+                if txt.isdigit() and 1 <= int(txt) <= 18:
+                    umaban = int(txt)
+                    break
 
-        if umaban is None:
-            umaban = idx
+        if umaban is None or umaban in seen_umaban:
+            for u_cand in range(1, 19):
+                if u_cand not in seen_umaban:
+                    umaban = u_cand
+                    break
+
+        seen_horses.add(horse_name)
+        seen_umaban.add(umaban)
 
         data_list.append({
             "印": "・",
@@ -812,9 +839,9 @@ elif data_list:
 
     st.success(f"✅ {len(data_list)}頭のデータ（AI印・馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[2] if len(data_list)>2 else data_list[0])
     ana_horse = next((d for d in data_list if '穴' in d['印']), None)
 
     # 上位評価カード (4カラム構成: 本命・対抗・単穴・激走穴馬)
