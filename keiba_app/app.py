@@ -235,7 +235,7 @@ def parse_db_netkeiba(soup):
     col_map = {}
     for idx, h in enumerate(headers):
         clean_h = re.sub(r'\s+', '', str(h))
-        if '馬番' in clean_h or '頭番' in clean_h or clean_h == '番' or clean_h == '馬': col_map['uma'] = idx
+        if '馬番' in clean_h or '頭番' in clean_h or clean_h == '番': col_map['uma'] = idx
         elif '馬名' in clean_h or '競走馬' in clean_h: col_map['name'] = idx
         elif '騎手' in clean_h: col_map['jockey'] = idx
         elif '斤量' in clean_h: col_map['weight'] = idx
@@ -246,7 +246,6 @@ def parse_db_netkeiba(soup):
     rows = main_table.find_all('tr')[1:]
     data_list = []
     seen_horses = set()
-    seen_umaban = set()
 
     for r in rows:
         tds = r.find_all(['td', 'th'])
@@ -278,24 +277,20 @@ def parse_db_netkeiba(soup):
         if u_idx is not None and u_idx < len(tds):
             txt = tds[u_idx].text.strip()
             m = re.search(r'(\d+)', txt)
-            if m: umaban = int(m.group(1))
+            if m and 1 <= int(m.group(1)) <= 18:
+                umaban = int(m.group(1))
 
         if umaban is None and len(tds) >= 3:
-            for td in tds[:3]:
-                txt2 = td.text.strip()
-                m2 = re.search(r'(\d+)', txt2)
-                if m2 and 1 <= int(m2.group(1)) <= 18:
-                    umaban = int(m2.group(1))
+            for c_i in [2, 1]:
+                txt = tds[c_i].text.strip()
+                if txt.isdigit() and 1 <= int(txt) <= 18:
+                    umaban = int(txt)
                     break
 
-        if umaban is None or umaban in seen_umaban:
-            for u_cand in range(1, 19):
-                if u_cand not in seen_umaban:
-                    umaban = u_cand
-                    break
+        if umaban is None:
+            umaban = len(data_list) + 1
 
         seen_horses.add(horse_name)
-        seen_umaban.add(umaban)
 
         weight_val = 55.0
         wt_idx = col_map.get('weight')
@@ -343,7 +338,7 @@ def parse_db_netkeiba(soup):
     return data_list
 
 def parse_race_netkeiba(soup):
-    for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn, .RaceList_Table, .Pickup_Table'):
+    for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn, .RaceList_Table, .Pickup_Table, .Pickup_Horse, .Popular_Horse'):
         noisy.decompose()
 
     main_table = soup.select_one('table.Shutuba_Table') or soup.select_one('table.race_table_01') or soup.select_one('table[class*="Shutuba"]') or soup.select_one('table[class*="race"]')
@@ -354,7 +349,6 @@ def parse_race_netkeiba(soup):
 
     data_list = []
     seen_horses = set()
-    seen_umaban = set()
 
     for idx, r in enumerate(rows, start=1):
         td_list = r.find_all('td')
@@ -378,37 +372,46 @@ def parse_race_netkeiba(soup):
         hw_str = "未計量 (発走前)"
         hw_diff = 0
 
-        r_cls = ' '.join([c.lower() for c in r.get('class', [])])
-        r_id = str(r.get('id', '')).lower()
-        m_tr_u = re.search(r'umaban(\d+)', r_cls) or re.search(r'horselist_(\d+)', r_cls) or re.search(r'tr_(\d+)', r_id) or re.search(r'horse_(\d+)', r_id)
-        if m_tr_u:
-            try:
-                u_cand = int(m_tr_u.group(1))
-                if 1 <= u_cand <= 18:
-                    umaban = u_cand
-            except ValueError: pass
+        # Extract umaban strictly from td cells first!
+        for td in td_list:
+            cls_list = [c.lower() for c in td.get('class', [])]
+            cls_str = ' '.join(cls_list)
+            if 'td_num' in cls_list or 'umaban' in cls_str or 'td_umaban' in cls_str:
+                txt = td.text.strip()
+                if txt.isdigit() and 1 <= int(txt) <= 18:
+                    umaban = int(txt)
+                    break
+                m_cls = re.search(r'umaban0*(\d+)', cls_str)
+                if m_cls and 1 <= int(m_cls.group(1)) <= 18:
+                    umaban = int(m_cls.group(1))
+                    break
+
+        if umaban is None:
+            r_cls = ' '.join([c.lower() for c in r.get('class', [])])
+            m_r = re.search(r'umaban0*(\d+)', r_cls)
+            if m_r and 1 <= int(m_r.group(1)) <= 18:
+                umaban = int(m_r.group(1))
+
+        if umaban is None and len(td_list) >= 2:
+            for c_i in [1, 0]:
+                txt = td_list[c_i].text.strip()
+                if txt.isdigit() and 1 <= int(txt) <= 18:
+                    umaban = int(txt)
+                    break
+
+        if umaban is None:
+            umaban = idx
 
         for td in td_list:
             cls_str = ' '.join([c.lower() for c in td.get('class', [])])
             text = td.text.strip()
-
-            if umaban is None:
-                m_u = re.search(r'umaban(\d+)', cls_str)
-                if m_u:
-                    u_cand = int(m_u.group(1))
-                    if 1 <= u_cand <= 18:
-                        umaban = u_cand
-                elif ('umaban' in cls_str or 'td_num' in cls_str or 'num' in cls_str or 'uma' in cls_str) and text.isdigit():
-                    u_cand = int(text)
-                    if 1 <= u_cand <= 18:
-                        umaban = u_cand
 
             if 'kinryo' in cls_str or 'weight' in cls_str:
                 m_wt = re.search(r'(\d{2}(?:\.\d)?)', text)
                 if m_wt: weight_val = float(m_wt.group(1))
 
             if 'odds' in cls_str or 'popular' in cls_str:
-                m_o = re.search(r'(\d+\.\d+)', text)
+                m_o = re.search(r'(\d+\.\d+|\d+)', text)
                 if m_o: odds_val = float(m_o.group(1))
 
             if 'ninki' in cls_str or 'pop' in cls_str:
@@ -421,21 +424,7 @@ def parse_race_netkeiba(soup):
                     hw_str = p_str
                     hw_diff = p_diff
 
-        if umaban is None and len(td_list) >= 2:
-            for td in td_list[:3]:
-                txt = td.text.strip()
-                if txt.isdigit() and 1 <= int(txt) <= 18:
-                    umaban = int(txt)
-                    break
-
-        if umaban is None or umaban in seen_umaban:
-            for u_cand in range(1, 19):
-                if u_cand not in seen_umaban:
-                    umaban = u_cand
-                    break
-
         seen_horses.add(horse_name)
-        seen_umaban.add(umaban)
 
         data_list.append({
             "印": "・",
