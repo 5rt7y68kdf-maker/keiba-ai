@@ -6,12 +6,14 @@ import streamlit as st
 import datetime
 import pandas as pd
 import numpy as np
+import itertools
+
+# Plotlyのオプショナルインポート (Streamlit CloudでのModuleNotFoundError防止)
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
-import itertools
 
 # SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -31,6 +33,27 @@ ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単
 
 TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
 TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
+
+# JRA規格公式枠番計算ロジック
+def get_jra_waku(umaban, total_horses):
+    if not isinstance(umaban, int) or umaban < 1:
+        return 1
+    if total_horses <= 8:
+        return umaban
+    base = total_horses // 8
+    rem = total_horses % 8
+    frame_capacities = []
+    for f in range(1, 9):
+        if f > (8 - rem):
+            frame_capacities.append(base + 1)
+        else:
+            frame_capacities.append(base)
+    current_horse = 1
+    for f_idx, cap in enumerate(frame_capacities, 1):
+        if current_horse <= umaban < current_horse + cap:
+            return f_idx
+        current_horse += cap
+    return 8
 
 # ---------------------------------------------------------
 # Streamlit Page Config & High-Contrast Light Clean Styling
@@ -157,7 +180,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -212,101 +235,238 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
 # ---------------------------------------------------------
 # Scraping & Data Extraction Logic
 # ---------------------------------------------------------
+def parse_db_netkeiba(soup):
+    table = soup.select_one('table.race_table_01')
+    if not table:
+        return []
 
-def get_jra_waku(umaban, total_horses):
-    if total_horses <= 8:
-        return umaban
-    base = total_horses // 8
-    rem = total_horses % 8
-    frame_capacities = []
-    for f in range(1, 9):
-        if f > (8 - rem):
-            frame_capacities.append(base + 1)
+    header_tr = table.find('tr')
+    if not header_tr:
+        return []
+
+    headers = [th.text.strip() for th in header_tr.find_all(['th', 'td'])]
+    col_map = {}
+    for idx, h in enumerate(headers):
+        clean_h = re.sub(r'\s+', '', str(h))
+        if '枠' in clean_h: col_map['waku'] = idx
+        elif '馬番' in clean_h or '頭番' in clean_h or clean_h == '番': col_map['uma'] = idx
+        elif '馬名' in clean_h or '競走馬' in clean_h: col_map['name'] = idx
+        elif '騎手' in clean_h: col_map['jockey'] = idx
+        elif '斤量' in clean_h: col_map['weight'] = idx
+        elif '単勝' in clean_h or 'オッズ' in clean_h: col_map['odds'] = idx
+        elif '人気' in clean_h: col_map['pop'] = idx
+        elif '体重' in clean_h or '馬体重' in clean_h: col_map['horse_weight'] = idx
+
+    rows = table.find_all('tr')[1:]
+    data_list = []
+    for r in rows:
+        tds = r.find_all(['td', 'th'])
+        if len(tds) < 5: continue
+
+        name_idx = col_map.get('name')
+        if name_idx is None or name_idx >= len(tds):
+            horse_a = r.select_one('a[href*="/horse/"]')
+            if not horse_a: continue
+            horse_name = horse_a.text.strip()
         else:
-            frame_capacities.append(base)
-    current_horse = 1
-    for f_idx, cap in enumerate(frame_capacities, 1):
-        if current_horse <= umaban < current_horse + cap:
-            return f_idx
-        current_horse += cap
-    return 8
+            horse_a = tds[name_idx].find('a')
+            horse_name = horse_a.text.strip() if horse_a else tds[name_idx].text.strip()
 
+        if not horse_name or horse_name in ['馬名', '競走馬', '馬 名']: continue
+
+        jockey_name = "未定義"
+        j_idx = col_map.get('jockey')
+        if j_idx is not None and j_idx < len(tds):
+            j_a = tds[j_idx].find('a')
+            jockey_name = j_a.text.strip() if j_a else tds[j_idx].text.strip()
+
+        wakaban = None
+        w_idx = col_map.get('waku')
+        if w_idx is not None and w_idx < len(tds):
+            txt = tds[w_idx].text.strip()
+            m = re.search(r'(\d+)', txt)
+            if m: wakaban = int(m.group(1))
+
+        umaban = None
+        u_idx = col_map.get('uma')
+        if u_idx is not None and u_idx < len(tds):
+            txt = tds[u_idx].text.strip()
+            m = re.search(r'(\d+)', txt)
+            if m: umaban = int(m.group(1))
+
+        if umaban is None and len(tds) >= 3:
+            txt2 = tds[2].text.strip()
+            m2 = re.search(r'(\d+)', txt2)
+            if m2 and 1 <= int(m2.group(1)) <= 18:
+                umaban = int(m2.group(1))
+
+        if umaban is None:
+            umaban = len(data_list) + 1
+
+        weight_val = 55.0
+        wt_idx = col_map.get('weight')
+        if wt_idx is not None and wt_idx < len(tds):
+            txt = tds[wt_idx].text.strip()
+            m = re.search(r'(\d+\.?\d*)', txt)
+            if m: weight_val = float(m.group(1))
+
+        odds_val = "未確定"
+        o_idx = col_map.get('odds')
+        if o_idx is not None and o_idx < len(tds):
+            txt = tds[o_idx].text.strip()
+            m = re.search(r'(\d+\.\d+|\d+)', txt)
+            if m: odds_val = float(m.group(1))
+
+        pop_val = "未確定"
+        p_idx = col_map.get('pop')
+        if p_idx is not None and p_idx < len(tds):
+            txt = tds[p_idx].text.strip()
+            m = re.search(r'(\d+)', txt)
+            if m: pop_val = int(m.group(1))
+
+        hw_str = "計不"
+        hw_diff = 0
+        hw_idx = col_map.get('horse_weight')
+        if hw_idx is not None and hw_idx < len(tds):
+            txt = tds[hw_idx].text.strip()
+            hw_str, hw_diff = parse_horse_weight_str(txt)
+        else:
+            for td in tds:
+                t_txt = td.text.strip()
+                if re.search(r'\d{3,4}\s*\(', t_txt):
+                    hw_str, hw_diff = parse_horse_weight_str(t_txt)
+                    break
+
+        data_list.append({
+            '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
+            '騎手': jockey_name,
+            '斤量': weight_val, '単勝オッズ': odds_val, '人気': pop_val,
+            '馬体重': hw_str, '体重増減': hw_diff
+        })
+
+    total_horses = len(data_list)
+    for d in data_list:
+        if d['枠番'] is None or d['枠番'] < 1 or d['枠番'] > 8:
+            d['枠番'] = get_jra_waku(d['馬番'], total_horses)
+
+    return data_list
 
 def parse_race_netkeiba(soup):
     for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
         noisy.decompose()
 
-    rows = soup.select('tr.HorseList') or soup.select('tr[class*="Horse"]')
+    rows = soup.select('tr.HorseList') or soup.select('table.ShutubaTable tr') or soup.select('table.Shutuba_Table tr') or soup.select('table.ResultTable tr')
     if not rows:
-        rows = soup.find_all('tr')
+        all_trs = soup.find_all('tr')
+        rows = [tr for tr in all_trs if tr.select_one('a[href*="/horse/"]')]
+
+    if not rows: return []
 
     data_list = []
-    for r in rows:
-        td_list = r.find_all('td')
-        if len(td_list) < 5: continue
+    for idx, r in enumerate(rows, start=1):
+        td_list = r.find_all(['td', 'th'])
+        if len(td_list) < 2: continue
 
         horse_a = r.select_one('a[href*="/horse/"]') or r.select_one('.HorseName a') or r.select_one('span.Horse_Name a')
         if not horse_a: continue
         horse_name = horse_a.text.strip()
-        if not horse_name: continue
+        if not horse_name or horse_name in ['馬名', '競走馬', '馬 名']: continue
 
         jockey_a = r.select_one('a[href*="/jockey/"]') or r.select_one('.Jockey a')
         jockey_name = jockey_a.text.strip() if jockey_a else "未定義"
 
         wakaban = None
-        umaban = len(data_list) + 1
+        umaban = None
+        odds_val = None
+        pop_val = None
         weight_val = 55.0
-        odds_val = "未確定"
-        pop_val = "未確定"
-        hw_str = "未計量 (発走前)"
+        hw_str = "計不"
         hw_diff = 0
 
+        r_cls = ' '.join([c.lower() for c in r.get('class', [])])
+        r_id = str(r.get('id', '')).lower()
+        m_tr_u = re.search(r'umaban(\d+)', r_cls) or re.search(r'tr_(\d+)', r_id) or re.search(r'horse_(\d+)', r_id)
+        if m_tr_u:
+            try: umaban = int(m_tr_u.group(1))
+            except ValueError: pass
+
+        m_tr_w = re.search(r'waku(\d+)', r_cls)
+        if m_tr_w:
+            try: wakaban = int(m_tr_w.group(1))
+            except ValueError: pass
+
         for td in td_list:
-            cls_str = ' '.join([c.lower() for c in td.get('class', [])])
+            classes = [c.lower() for c in td.get('class', [])]
+            cls_str = ' '.join(classes)
             text = td.text.strip()
 
-            if 'waku' in cls_str or 'waku' in (td.get('id') or '').lower():
-                m_w_cls = re.search(r'waku(\d)', cls_str)
-                if m_w_cls:
-                    wakaban = int(m_w_cls.group(1))
-                elif text.isdigit() and 1 <= int(text) <= 8:
-                    wakaban = int(text)
+            if wakaban is None:
+                m_w = re.search(r'waku(\d+)', cls_str)
+                if m_w:
+                    wakaban = int(m_w.group(1))
+                elif 'waku' in cls_str:
+                    m_txt_w = re.search(r'(\d+)', text)
+                    if m_txt_w and 1 <= int(m_txt_w.group(1)) <= 8:
+                        wakaban = int(m_txt_w.group(1))
 
-            if 'umaban' in cls_str or 'uma' in cls_str:
-                m_u_cls = re.search(r'umaban(\d+)', cls_str)
-                if m_u_cls:
-                    umaban = int(m_u_cls.group(1))
-                elif text.isdigit() and 1 <= int(text) <= 18:
-                    umaban = int(text)
+            if umaban is None:
+                m_u = re.search(r'umaban(\d+)', cls_str)
+                if m_u:
+                    umaban = int(m_u.group(1))
+                elif 'umaban' in cls_str or 'uma' in cls_str or 'td_umaban' in cls_str or 'num' in cls_str:
+                    m_txt_u = re.search(r'(\d+)', text)
+                    if m_txt_u and 1 <= int(m_txt_u.group(1)) <= 18:
+                        umaban = int(m_txt_u.group(1))
 
-            if 'kinryo' in cls_str or 'weight' in cls_str:
-                m_wt = re.search(r'(\d{2}(?:\.\d)?)', text)
-                if m_wt: weight_val = float(m_wt.group(1))
+            m_wt = re.search(r'^(4\d|5\d|6\d)(?:\.\d)?$', text)
+            if m_wt:
+                try: weight_val = float(m_wt.group(0))
+                except ValueError: pass
 
-            if 'odds' in cls_str or 'popular' in cls_str:
+            if 'odds' in cls_str or 'odds' in (td.get('id') or '').lower():
                 m_o = re.search(r'(\d+\.\d+)', text)
-                if m_o: odds_val = float(m_o.group(1))
+                if m_o:
+                    try: odds_val = float(m_o.group(1))
+                    except ValueError: pass
 
-            if 'ninki' in cls_str or 'pop' in cls_str:
+            if 'popular' in cls_str or 'pop' in cls_str or 'ninki' in cls_str:
                 m_p = re.search(r'(\d+)', text)
-                if m_p: pop_val = int(m_p.group(1))
+                if m_p:
+                    try: pop_val = int(m_p.group(1))
+                    except ValueError: pass
 
             if 'weight' in cls_str or 'weight' in (td.get('id') or '').lower() or re.search(r'\d{3,4}\s*\(', text):
-                hw_str, hw_diff = parse_horse_weight_str(text)
+                p_str, p_diff = parse_horse_weight_str(text)
+                if p_str != "計不":
+                    hw_str = p_str
+                    hw_diff = p_diff
+
+        if umaban is None and len(td_list) >= 2:
+            txt1 = td_list[1].text.strip()
+            m_u1 = re.search(r'(\d+)', txt1)
+            if m_u1 and 1 <= int(m_u1.group(1)) <= 18:
+                umaban = int(m_u1.group(1))
+
+        if wakaban is None and len(td_list) >= 1:
+            txt0 = td_list[0].text.strip()
+            m_w0 = re.search(r'(\d+)', txt0)
+            if m_w0 and 1 <= int(m_w0.group(1)) <= 8:
+                wakaban = int(m_w0.group(1))
+
+        if umaban is None: umaban = idx
 
         data_list.append({
-            "印": "・",
-            "枠番": wakaban, "馬番": umaban, "馬名": horse_name,
-            "騎手": jockey_name, "斤量": weight_val,
-            "単勝オッズ": odds_val, "人気": pop_val,
-            "馬体重": hw_str, "体重増減": hw_diff
+            '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
+            '騎手': jockey_name,
+            '斤量': weight_val, '単勝オッズ': odds_val if odds_val is not None else "未確定",
+            '人気': pop_val if pop_val is not None else "未確定",
+            '馬体重': hw_str, '体重増減': hw_diff
         })
 
     total_horses = len(data_list)
     for d in data_list:
-        if d['枠番'] is None or not isinstance(d['枠番'], int) or d['枠番'] < 1 or d['枠番'] > 8:
-            u = d.get('馬番', 1)
-            d['枠番'] = get_jra_waku(u, total_horses)
+        if d['枠番'] is None or d['枠番'] < 1 or d['枠番'] > 8:
+            d['枠番'] = get_jra_waku(d['馬番'], total_horses)
 
     return data_list
 
@@ -441,7 +601,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
         bias_sum = (tb_waku_bonus + tb_leg_bonus + pace_bonus + cond_bonus) * w_bias
 
-        # 穴馬ボーナス計算 (人気薄・オッズ高めで高指数)
+        # 穴馬ボーナス計算 (人気薄・オッズ高目で高指数)
         ana_bonus = 0.0
         if (isinstance(pop_val, int) and pop_val >= 5) or o_val >= 10.0:
             ana_bonus = min(15.0, (o_val * 0.4) + (pop_val * 0.8)) * w_ana
@@ -503,6 +663,12 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
     soup, err = fetch_html(shutuba_url)
     if soup:
         data_list = parse_race_netkeiba(soup)
+
+    if not data_list:
+        db_url = f"https://db.netkeiba.com/race/{clean_id}/"
+        soup, err = fetch_html(db_url)
+        if soup:
+            data_list = parse_db_netkeiba(soup)
 
     if not data_list:
         return None, f"指定されたレースID ({clean_id}) の出馬表データを取得できませんでした。"
@@ -700,9 +866,9 @@ elif data_list:
 
     st.success(f"✅ {len(data_list)}頭のデータ（AI印・馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[2] if len(data_list)>2 else data_list[0])
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
     ana_horse = next((d for d in data_list if '穴' in d['印']), None)
 
     # 上位評価カード (4カラム構成: 本命・対抗・単穴・激走穴馬)
@@ -785,7 +951,7 @@ elif data_list:
                 categories = ['スピード指数', '騎手力', '馬体気配', '展開バイアス', '総合AIパワー']
                 
                 for h_opt in sel_radar:
-                    u_no = int(h_opt.split('番')[0])
+                    u_no = int(h_opt.split('番'))
                     match_h = next((d for d in data_list if d['馬番'] == u_no), None)
                     if match_h:
                         vals = [
@@ -795,8 +961,8 @@ elif data_list:
                             match_h.get('sub_bias', 50.0),
                             match_h.get('sub_overall', 50.0)
                         ]
-                        vals_closed = vals + [vals[0]]
-                        cats_closed = categories + [categories[0]]
+                        vals_closed = vals + [vals]
+                        cats_closed = categories + [categories]
                         
                         fig_radar.add_trace(go.Scatterpolar(
                             r=vals_closed,
@@ -834,7 +1000,7 @@ elif data_list:
         return ''
 
     # 小数点第一位で統一フォーマット表示
-    fmt_dict = {c: (lambda x: f"{float(x):.1f}" if isinstance(x, (int, float, np.number)) and not pd.isna(x) else str(x)) for c in ["AI指数", "勝率予測", "単勝オッズ", "斤量"] if c in df.columns}
+    fmt_dict = {c: "{:.1f}" for c in ["AI指数", "勝率予測", "単勝オッズ", "斤量"] if c in df.columns}
     st.dataframe(df.style.map(highlight_marks, subset=['印']).format(fmt_dict), use_container_width=True)
     
     csv_data = df.to_csv(index=False, encoding='utf-8-sig')
