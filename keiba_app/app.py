@@ -235,7 +235,7 @@ def parse_db_netkeiba(soup):
     col_map = {}
     for idx, h in enumerate(headers):
         clean_h = re.sub(r'\s+', '', str(h))
-        if '馬番' in clean_h or '頭番' in clean_h or clean_h == '番': col_map['uma'] = idx
+        if '馬番' in clean_h or '頭番' in clean_h or clean_h == '番' or clean_h == '馬': col_map['uma'] = idx
         elif '馬名' in clean_h or '競走馬' in clean_h: col_map['name'] = idx
         elif '騎手' in clean_h: col_map['jockey'] = idx
         elif '斤量' in clean_h: col_map['weight'] = idx
@@ -277,7 +277,7 @@ def parse_db_netkeiba(soup):
             if m: umaban = int(m.group(1))
 
         if umaban is None and len(tds) >= 3:
-            txt2 = tds.text.strip()
+            txt2 = tds[2].text.strip() if len(tds) > 2 else tds[1].text.strip()
             m2 = re.search(r'(\d+)', txt2)
             if m2 and 1 <= int(m2.group(1)) <= 18:
                 umaban = int(m2.group(1))
@@ -360,9 +360,12 @@ def parse_race_netkeiba(soup):
 
         r_cls = ' '.join([c.lower() for c in r.get('class', [])])
         r_id = str(r.get('id', '')).lower()
-        m_tr_u = re.search(r'horselist_(\d+)', r_cls) or re.search(r'umaban(\d+)', r_cls) or re.search(r'tr_(\d+)', r_id) or re.search(r'horse_(\d+)', r_id)
+        m_tr_u = re.search(r'umaban(\d+)', r_cls) or re.search(r'horselist_(\d+)', r_cls) or re.search(r'tr_(\d+)', r_id) or re.search(r'horse_(\d+)', r_id)
         if m_tr_u:
-            try: umaban = int(m_tr_u.group(1))
+            try:
+                u_cand = int(m_tr_u.group(1))
+                if 1 <= u_cand <= 18:
+                    umaban = u_cand
             except ValueError: pass
 
         for td in td_list:
@@ -371,9 +374,14 @@ def parse_race_netkeiba(soup):
 
             if umaban is None:
                 m_u = re.search(r'umaban(\d+)', cls_str)
-                if m_u: umaban = int(m_u.group(1))
-                elif ('umaban' in cls_str or 'uma' in cls_str or 'num' in cls_str or 'td_umaban' in cls_str) and text.isdigit() and 1 <= int(text) <= 18:
-                    umaban = int(text)
+                if m_u:
+                    u_cand = int(m_u.group(1))
+                    if 1 <= u_cand <= 18:
+                        umaban = u_cand
+                elif ('umaban' in cls_str or 'td_num' in cls_str or 'num' in cls_str) and text.isdigit():
+                    u_cand = int(text)
+                    if 1 <= u_cand <= 18:
+                        umaban = u_cand
 
             if 'kinryo' in cls_str or 'weight' in cls_str:
                 m_wt = re.search(r'(\d{2}(?:\.\d)?)', text)
@@ -394,11 +402,13 @@ def parse_race_netkeiba(soup):
                     hw_diff = p_diff
 
         if umaban is None and len(td_list) >= 2:
-            txt1 = td_list.text.strip()
-            if txt1.isdigit() and 1 <= int(txt1) <= 18:
-                umaban = int(txt1)
+            txt1 = td_list[1].text.strip()
+            m1 = re.search(r'(\d+)', txt1)
+            if m1 and 1 <= int(m1.group(1)) <= 18:
+                umaban = int(m1.group(1))
 
-        if umaban is None: umaban = idx
+        if umaban is None:
+            umaban = idx
 
         data_list.append({
             "印": "・",
@@ -794,7 +804,9 @@ with st.spinner("出馬表・馬体重・オッズ・トラックバイアスを
 if err:
     st.error(err)
 elif data_list:
+    data_list.sort(key=lambda x: x["馬番"] if isinstance(x["馬番"], int) else 99)
     df = pd.DataFrame(data_list)
+    df = df.sort_values("馬番", ascending=True).reset_index(drop=True)
     cols_order = ["印", "馬番", "馬名", "AI指数", "勝率予測", "単勝オッズ", "人気", "騎手", "斤量", "馬体重", "体重増減"]
     df = df[[c for c in cols_order if c in df.columns]]
 
@@ -1005,6 +1017,7 @@ elif data_list:
             aite_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[1:aite_limit]]
             if ana_horse and f"{ana_horse['馬番']}番 {ana_horse['馬名']} ({ana_horse['印']})" not in aite_default:
                 aite_default.append(f"{ana_horse['馬番']}番 {ana_horse['馬名']} ({ana_horse['印']})")
+            aite_default.sort(key=lambda h: extract_num(h))
 
             aite_horses = st.multiselect("🎯 相手馬 (複数選択・タップで追加/削除)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=aite_default)
             
@@ -1078,6 +1091,7 @@ elif data_list:
         with b_col1:
             selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
             box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:5]]
+            box_default.sort(key=lambda h: extract_num(h))
             box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
 
         with b_col2:
@@ -1119,6 +1133,9 @@ elif data_list:
             f1_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:1]]
             f2_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:3]]
             f3_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:7]]
+            f1_def.sort(key=lambda h: extract_num(h))
+            f2_def.sort(key=lambda h: extract_num(h))
+            f3_def.sort(key=lambda h: extract_num(h))
 
             f1_h = st.multiselect("1頭目 / 1着候補", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f1_def)
             f2_h = st.multiselect("2頭目 / 2着候補", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f2_def)
