@@ -224,8 +224,6 @@ def parse_race_netkeiba(soup):
         umaban = None
         odds_val = None
         pop_val = None
-        weight_val = 55.0
-        found_kinryo = False
         hw_str = "計不"
         hw_diff = 0
 
@@ -239,25 +237,6 @@ def parse_race_netkeiba(soup):
 
             m_u = re.search(r'umaban(\d+)', cls_str)
             if m_u: umaban = int(m_u.group(1))
-
-            # Kinryo parsing with lock once found (prevents Odds like 52.0 from overwriting)
-            if 'kinryo' in cls_str or 'batto' in cls_str:
-                m_k = re.search(r'(4[5-9]|5[0-9]|6[0-5])(?:\.\d)?', text)
-                if m_k:
-                    try:
-                        weight_val = float(m_k.group(0))
-                        found_kinryo = True
-                    except ValueError: pass
-
-            if not found_kinryo:
-                if not any(k in cls_str for k in ['odds', 'popular', 'weight', 'umaban', 'waku', 'ninki', 'horse', 'jockey']):
-                    if '(' not in text and '+' not in text and '-' not in text:
-                        m_k = re.search(r'^(4[5-9]|5[0-9]|6[0-5])(?:\.\d)?$', text)
-                        if m_k:
-                            try:
-                                weight_val = float(m_k.group(0))
-                                found_kinryo = True
-                            except ValueError: pass
 
             if 'odds' in cls_str or 'odds' in (td.get('id') or '').lower():
                 m_o = re.search(r'(\d+\.\d+)', text)
@@ -291,7 +270,7 @@ def parse_race_netkeiba(soup):
         data_list.append({
             '枠番': wakaban, '馬番': umaban, '馬名': horse_name,
             '騎手': jockey_name,
-            '斤量': weight_val, '単勝オッズ': odds_val if odds_val is not None else "未確定",
+            '単勝オッズ': odds_val if odds_val is not None else "未確定",
             '人気': pop_val if pop_val is not None else "未確定",
             '馬体重': hw_str, '体重増減': hw_diff
         })
@@ -337,7 +316,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
     for d in data_list:
         odds = d.get('単勝オッズ')
         pop = d.get('人気')
-        weight = d.get('斤量', 55.0)
+        weight = d.get(55.0)
         hw_diff = d.get('体重増減', 0)
         uma = d.get('馬番')
         waku = d.get('枠番', 1)
@@ -425,7 +404,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, race_env=None):
         elif "⚠️ 太め残り" in p_status: paddock_score = -4.0
         elif "💥 テンション高" in p_status: paddock_score = -5.0
 
-        raw_score = pop_score + odds_score + weight_bonus + j_score + blood_score + weather_score + bias_score + pattern_score + weight_diff_score + paddock_score + 5
+        raw_score = pop_score + odds_score + j_score + blood_score + weather_score + bias_score + pattern_score + weight_diff_score + paddock_score + 5
         score = round(min(99.9, max(10.0, raw_score)), 1)
 
         d_copy = dict(d)
@@ -541,30 +520,30 @@ if daily_err:
     st.info(f"{daily_err}")
 
 # Step 2: 競馬場選択
-    st.markdown(f"### 2️⃣ 開催場を選択 (`{cur_date.strftime('%Y年%m月%d日')}` JRA中央競馬)")
-    venues = list(daily_map.keys())
+st.markdown(f"### 2️⃣ 開催場を選択 (`{cur_date.strftime('%Y年%m月%d日')}` JRA中央競馬)")
+venues = list(daily_map.keys())
+
+if not venues:
+    st.info("指定日に開催される中央競馬(JRA)レースはありません。土日を選択してください。")
+else:
+    selected_venue = st.radio("開催場所:", venues, horizontal=True)
     
-    if not venues:
-        st.info("指定日に開催される中央競馬(JRA)レースはありません。土日を選択してください。")
-    else:
-        selected_venue = st.radio("開催場所:", venues, horizontal=True)
-        
-        # Step 3: レース番号ボタン (1R〜12R) 一括表示
-        st.markdown(f"### 3️⃣ レースを選択 (`📍 {selected_venue}`)")
-        
-        races = daily_map.get(selected_venue, [])
-        if races:
-            cols = st.columns(4)
-            for idx, r in enumerate(races):
-                col = cols[idx % 4]
-                r_num = r['r_num']
-                r_name = r['name']
-                r_id = r['id']
-                
-                label = f"**{r_num}R** {r_name[:10]}"
-                if col.button(f"{r_num}R : {r_name}", key=f"btn_{r_id}", use_container_width=True):
-                    st.session_state['active_race_id'] = r_id
-                    st.session_state['active_race_label'] = f"📍【{selected_venue} {r_num}R】 {r_name}"
+    # Step 3: レース番号ボタン (1R〜12R) 一括表示
+    st.markdown(f"### 3️⃣ レースを選択 (`📍 {selected_venue}`)")
+    
+    races = daily_map.get(selected_venue, [])
+    if races:
+        cols = st.columns(4)
+        for idx, r in enumerate(races):
+            col = cols[idx % 4]
+            r_num = r['r_num']
+            r_name = r['name']
+            r_id = r['id']
+            
+            label = f"**{r_num}R** {r_name[:10]}"
+            if col.button(f"{r_num}R : {r_name}", key=f"btn_{r_id}", use_container_width=True):
+                st.session_state['active_race_id'] = r_id
+                st.session_state['active_race_label'] = f"📍【{selected_venue} {r_num}R】 {r_name}"
 
 # ---------------------------------------------------------
 # Results Dashboard
@@ -612,7 +591,7 @@ if active_id:
                 <div class="horse-card card-honmei">
                     <span class="badge-honmei">◎ 本命</span>
                     <div class="horse-name-title">{honmei['馬番']}番 {honmei['馬名']}</div>
-                    <p style="color:#475569; font-weight:600; margin:4px 0;">騎手: {honmei['騎手']} ({honmei['斤量']}kg)</p>
+                    <p style="color:#475569; font-weight:600; margin:4px 0;">騎手: {honmei['騎手']}</p>
                     <p style="color:#059669; font-weight:700;">オッズ: {honmei['単勝オッズ']}倍 ({honmei['人気']}人気)</p>
                     <hr style="margin:8px 0; border-color:#fca5a5;">
                     <p style="font-size:0.85rem; color:#1e293b;"><b>AI推し理由:</b> {honmei['_p_comment']}</p>
@@ -625,7 +604,7 @@ if active_id:
                 <div class="horse-card card-taikou">
                     <span class="badge-taikou">◯ 対抗</span>
                     <div class="horse-name-title">{taikou['馬番']}番 {taikou['馬名']}</div>
-                    <p style="color:#475569; font-weight:600; margin:4px 0;">騎手: {taikou['騎手']} ({taikou['斤量']}kg)</p>
+                    <p style="color:#475569; font-weight:600; margin:4px 0;">騎手: {taikou['騎手']}</p>
                     <p style="color:#059669; font-weight:700;">オッズ: {taikou['単勝オッズ']}倍 ({taikou['人気']}人気)</p>
                     <hr style="margin:8px 0; border-color:#86efac;">
                     <p style="font-size:0.85rem; color:#1e293b;"><b>AI推し理由:</b> {taikou['_p_comment']}</p>
@@ -638,7 +617,7 @@ if active_id:
                 <div class="horse-card card-tanana">
                     <span class="badge-tanana">▲ 単穴</span>
                     <div class="horse-name-title">{tanana['馬番']}番 {tanana['馬名']}</div>
-                    <p style="color:#475569; font-weight:600; margin:4px 0;">騎手: {tanana['騎手']} ({tanana['斤量']}kg)</p>
+                    <p style="color:#475569; font-weight:600; margin:4px 0;">騎手: {tanana['騎手']}</p>
                     <p style="color:#059669; font-weight:700;">オッズ: {tanana['単勝オッズ']}倍 ({tanana['人気']}人気)</p>
                     <hr style="margin:8px 0; border-color:#93c5fd;">
                     <p style="font-size:0.85rem; color:#1e293b;"><b>AI推し理由:</b> {tanana['_p_comment']}</p>
@@ -647,6 +626,6 @@ if active_id:
 
         st.markdown("### 📊 全出走馬データ一覧")
         df_display = pd.DataFrame(data)
-        cols_to_show = ['予想印', '馬番', '枠番', '馬名', '騎手', '斤量', '単勝オッズ', '人気', 'AI予想スコア', '血統適性', '騎手評価']
+        cols_to_show = ['予想印', '馬番', '枠番', '馬名', '騎手', '単勝オッズ', '人気', 'AI予想スコア', '血統適性', '騎手評価']
         cols_existing = [c for c in cols_to_show if c in df_display.columns]
         st.dataframe(df_display[cols_existing], use_container_width=True)
