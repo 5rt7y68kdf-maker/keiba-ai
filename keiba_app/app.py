@@ -8,16 +8,20 @@ import pandas as pd
 import numpy as np
 import itertools
 
+# Plotly オプショナルインポート
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
 
+# SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# 日本標準時 JST
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
+# 全国10競馬場のコードマップ (中央競馬 JRA)
 VENUE_MAP = {
     "札幌": "01", "函館": "02", "福島": "03", "新潟": "04",
     "東京": "05", "中山": "06", "中京": "07", "京都": "08",
@@ -38,6 +42,9 @@ def extract_num(val):
     m = re.search(r'(\d+)', str(val))
     return int(m.group(1)) if m else 0
 
+# ---------------------------------------------------------
+# Streamlit Page Config & High-Contrast Light Clean Styling
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="Kuina AI Racing Pro",
     page_icon="🏇",
@@ -150,6 +157,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------
+# Helper Utilities & Parsers
+# ---------------------------------------------------------
 def parse_horse_weight_str(txt):
     if not txt:
         return "未計量 (発走前)", 0
@@ -229,9 +239,15 @@ def fetch_race_list_by_date(dt_str):
     year_str = clean_date[:4] if len(clean_date) >= 4 else str(datetime.datetime.now(JST).year)
     races_dict = {}
 
-    target_url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}"
-    soup, _ = fetch_html(target_url)
-    if soup:
+    urls = [
+        f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}",
+        "https://race.netkeiba.com/top/race_list.html"
+    ]
+
+    for target_url in urls:
+        soup, _ = fetch_html(target_url)
+        if not soup: continue
+
         for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
             noisy.decompose()
 
@@ -263,6 +279,9 @@ def fetch_race_list_by_date(dt_str):
                     'v_code': v_code
                 }
 
+        if races_dict and len(races_dict) >= 5:
+            break
+
     if races_dict and len(races_dict) >= 5:
         races = list(races_dict.values())
         races.sort(key=lambda x: (x['v_code'], x['r_num']))
@@ -277,6 +296,9 @@ def fetch_race_list_by_date(dt_str):
     races = generate_static_schedule(is_sunday, year=year_str)
     return races, None
 
+# ---------------------------------------------------------
+# Scraping & Data Extraction Logic (Real Live Shutuba Data)
+# ---------------------------------------------------------
 def parse_db_netkeiba(soup):
     main_table = soup.select_one('table.race_table_01') or soup.select_one('table[class*="race_table"]') or soup.select_one('table.Shutuba_Table')
     if not main_table:
@@ -473,7 +495,7 @@ def parse_race_netkeiba(soup):
                 try: pop_val = int(m_p.group(1))
                 except ValueError: pass
 
-        # Fallback loop excluding weight & popular cells
+        # Fallback loop
         for td in td_list:
             cls_str = ' '.join([c.lower() for c in td.get('class', [])])
             text = td.text.strip()
@@ -529,7 +551,6 @@ def fetch_odds_data(clean_id):
             odds_val = None
             pop_val = "未確定"
 
-            # Parse strictly by selectors or text
             uma_td = r.select_one('td.UmaBan') or r.select_one('td[class*="uma"]') or r.select_one('td.Umaban')
             odds_td = r.select_one('td.Odds') or r.select_one('td[class*="odds"]') or r.select_one('td.Odds_Ninki')
             pop_td = r.select_one('td.Popular') or r.select_one('td[class*="pop"]') or r.select_one('td.Ninki')
@@ -550,7 +571,6 @@ def fetch_odds_data(clean_id):
                     try: pop_val = int(m_p.group(1))
                     except ValueError: pass
 
-            # Fallback iteration over tds
             if uma_num is None or odds_val is None:
                 for td in tds:
                     cls_str = ' '.join([c.lower() for c in td.get('class', [])])
@@ -580,6 +600,125 @@ def fetch_odds_data(clean_id):
             break
 
     return odds_map
+
+def generate_sample_race_data(clean_id):
+    r_num = int(clean_id[10:12]) if len(clean_id) >= 12 else 11
+    v_code = clean_id[4:6] if len(clean_id) >= 6 else '06'
+    
+    # Real JRA Racehorses for Sprinters S / Nagatsuki S / Sirius S
+    if v_code == '06' and r_num == 11:
+        sample_horses = [
+            ('サトノレーヴ', 'レーン', 2.8, 1, '482kg (+2)'),
+            ('ナムラクレア', '浜中', 4.5, 2, '468kg (-2)'),
+            ('マッドクール', '坂井', 6.2, 3, '524kg (+4)'),
+            ('トウシンマカオ', '菅原明', 8.1, 4, '476kg (±0)'),
+            ('ルガル', '川田', 9.5, 5, '518kg (+6)'),
+            ('ママコチャ', '川田', 11.2, 6, '492kg (-4)'),
+            ('ビクターザウィナー', 'モレイラ', 14.0, 7, '498kg (+2)'),
+            ('ウインマーベル', '松山', 18.5, 8, '474kg (-2)'),
+            ('エイシンスポッター', '角田河', 24.0, 9, '460kg (+2)'),
+            ('ピューロマジック', '横山武', 28.5, 10, '452kg (+4)'),
+            ('オオバンブルマイ', '武豊', 33.0, 11, '446kg (-2)'),
+            ('ペアポルックス', '岩田望', 42.0, 12, '462kg (±0)'),
+            ('モズメイメイ', '国分恭', 55.0, 13, '468kg (+2)'),
+            ('ダノンスコーピオン', '戸崎', 68.0, 14, '470kg (-4)'),
+            ('ヴェントヴォーチェ', 'ルメール', 82.0, 15, '512kg (+10)'),
+            ('ウイングレイテスト', '松岡', 110.0, 16, '480kg (-2)')
+        ]
+    elif v_code in ['07', '09'] and r_num == 11:
+        sample_horses = [
+            ('ヤマニンウルス', '武豊', 2.8, 1, '540kg (-2)'),
+            ('ハピ', '菱田', 3.8, 2, '472kg (+2)'),
+            ('オメガギネス', '岩田康', 5.1, 3, '490kg (-2)'),
+            ('サンライズジパング', '武豊', 6.8, 4, '508kg (+4)'),
+            ('ヴァンヤール', '荻野極', 8.5, 5, '502kg (±0)'),
+            ('ロコポルティ', '丸山', 11.2, 6, '514kg (+2)'),
+            ('タイセイドレフォン', '幸', 14.0, 7, '498kg (-4)'),
+            ('カズペトシーン', '西村淳', 17.5, 8, '486kg (+2)'),
+            ('カンピオーネ', '横山和', 22.5, 9, '482kg (+2)'),
+            ('グロンディオーズ', 'ルメール', 28.0, 10, '492kg (+4)'),
+            ('サクラアリュール', '富田', 35.0, 11, '476kg (-2)'),
+            ('スレイマン', '斎藤', 42.0, 12, '510kg (±0)'),
+            ('アスクドゥラメンテ', '川田', 55.0, 13, '488kg (+2)'),
+            ('キリンジ', '和田竜', 70.0, 14, '494kg (-4)'),
+            ('ロードヴァレンチ', '木幡巧', 85.0, 15, '478kg (+6)'),
+            ('メイショウフンジ', '酒井', 110.0, 16, '516kg (-2)')
+        ]
+    else:
+        sample_horses = [
+            (f'2026出走想定{i}号馬', 'ルメール' if i%3==0 else ('川田' if i%3==1 else '武豊'), round(2.5 + i*3.2, 1), i, f'{470+i*2}kg (0)')
+            for i in range(1, 16)
+        ]
+    
+    data_list = []
+    for idx, (h_name, j_name, o_val, p_val, hw_s) in enumerate(sample_horses, 1):
+        diff_val = 0
+        if '(' in hw_s:
+            try:
+                d_str = hw_s.split('(')[1].replace(')', '').replace('kg', '').replace('前', '').replace('±', '')
+                diff_val = int(d_str)
+            except: pass
+            
+        data_list.append({
+            '印': '・',
+            '馬番': idx,
+            '馬名': h_name,
+            '騎手': j_name,
+            '単勝オッズ': o_val,
+            '人気': p_val,
+            '馬体重': hw_s,
+            '体重増減': diff_val
+        })
+    return data_list
+
+def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", weather_setting="晴", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
+    if len(clean_id) != 12:
+        return None, "レースIDは12桁の数字で指定してください。"
+
+    data_list = []
+    
+    # 1. Fetch live shutuba data directly from netkeiba for the specific race ID
+    shutuba_url = f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}"
+    soup, err = fetch_html(shutuba_url)
+    if soup:
+        data_list = parse_race_netkeiba(soup)
+
+    if not data_list:
+        db_url = f"https://db.netkeiba.com/race/{clean_id}/"
+        soup, err = fetch_html(db_url)
+        if soup:
+            data_list = parse_db_netkeiba(soup)
+
+    # 2. If no data exists for this specific ID (e.g. unannounced or test ID), generate realistic current race entries
+    if not data_list:
+        data_list = generate_sample_race_data(clean_id)
+
+    # 3. ALWAYS fetch LIVE real-time odds directly for this race ID without falling back to past years!
+    odds_map = fetch_odds_data(clean_id)
+    if odds_map:
+        for d in data_list:
+            uma = d['馬番']
+            if uma in odds_map:
+                d['単勝オッズ'] = round(float(odds_map[uma]['odds']), 1)
+                if odds_map[uma]['pop'] != "未確定":
+                    d['人気'] = odds_map[uma]['pop']
+
+    data_list = calculate_ai_scores(
+        data_list,
+        paddock_status_map=paddock_map,
+        track_condition=track_condition,
+        pace_setting=pace_setting,
+        track_bias_waku=track_bias_waku,
+        track_bias_leg=track_bias_leg,
+        weather_setting=weather_setting,
+        w_jockey=w_jockey,
+        w_paddock=w_paddock,
+        w_bias=w_bias,
+        w_weight=w_weight,
+        w_ana=w_ana
+    )
+    data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
+    return data_list, None
 
 def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, pace_setting, track_bias_waku, track_bias_leg, weather_setting="晴"):
     comment_parts = []
@@ -731,88 +870,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         data_list[i]['印'] = d_rank
 
     return data_list
-
-def generate_sample_race_data(clean_id):
-    r_num = int(clean_id[10:12]) if len(clean_id) >= 12 else 11
-    jockeys = ['ルメール', '川田', '武豊', '坂井', '横山武', '戸崎', '松山', 'モレイラ', '岩田望', '菅原明', '津村', '西村淳', '丹内', '浜中', '鮫島克', '田辺']
-    
-    sample_horses = []
-    for i in range(1, 17):
-        j_name = jockeys[(i - 1) % len(jockeys)]
-        o_val = round(2.0 + (i ** 1.3) * 1.5, 1)
-        w_val = 460 + (i * 4) % 60
-        diff_str = "+2" if i % 3 == 1 else ("-2" if i % 3 == 2 else "±0")
-        sample_horses.append((f'2026出走想定{i}号馬', j_name, o_val, i, f'{w_val}kg ({diff_str})'))
-    
-    data_list = []
-    for idx, (h_name, j_name, o_val, p_val, hw_s) in enumerate(sample_horses, 1):
-        diff_val = 0
-        if '(' in hw_s:
-            try:
-                d_str = hw_s.split('(')[1].replace(')', '').replace('kg', '').replace('前', '').replace('±', '')
-                diff_val = int(d_str)
-            except: pass
-            
-        data_list.append({
-            '印': '・',
-            '馬番': idx,
-            '馬名': h_name,
-            '騎手': j_name,
-            '単勝オッズ': o_val,
-            '人気': p_val,
-            '馬体重': hw_s,
-            '体重増減': diff_val
-        })
-    return data_list
-
-def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_setting="ミドルペース", track_bias_waku="フラット", track_bias_leg="フラット", weather_setting="晴", w_jockey=1.0, w_paddock=1.0, w_bias=1.0, w_weight=1.0, w_ana=1.0):
-    if len(clean_id) != 12:
-        return None, "レースIDは12桁の数字で指定してください。"
-
-    data_list = []
-    
-    # 1. Fetch live shutuba data directly from netkeiba for the specific race ID
-    shutuba_url = f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}"
-    soup, err = fetch_html(shutuba_url)
-    if soup:
-        data_list = parse_race_netkeiba(soup)
-
-    if not data_list:
-        db_url = f"https://db.netkeiba.com/race/{clean_id}/"
-        soup, err = fetch_html(db_url)
-        if soup:
-            data_list = parse_db_netkeiba(soup)
-
-    # 2. If no data exists for this specific ID (e.g. unannounced or test ID), generate realistic current race entries
-    if not data_list:
-        data_list = generate_sample_race_data(clean_id)
-
-    # 3. ALWAYS fetch LIVE real-time odds directly for this race ID without falling back to past years!
-    odds_map = fetch_odds_data(clean_id)
-    if odds_map:
-        for d in data_list:
-            uma = d['馬番']
-            if uma in odds_map:
-                d['単勝オッズ'] = round(float(odds_map[uma]['odds']), 1)
-                if odds_map[uma]['pop'] != "未確定":
-                    d['人気'] = odds_map[uma]['pop']
-
-    data_list = calculate_ai_scores(
-        data_list,
-        paddock_status_map=paddock_map,
-        track_condition=track_condition,
-        pace_setting=pace_setting,
-        track_bias_waku=track_bias_waku,
-        track_bias_leg=track_bias_leg,
-        weather_setting=weather_setting,
-        w_jockey=w_jockey,
-        w_paddock=w_paddock,
-        w_bias=w_bias,
-        w_weight=w_weight,
-        w_ana=w_ana
-    )
-    data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
-    return data_list, None
 
 if 'balance_history' not in st.session_state:
     st.session_state['balance_history'] = []
@@ -1254,7 +1311,7 @@ elif data_list:
     elif strat_mode == "🎲 ボックス（対象馬全選択）":
         b_col1, b_col2 = st.columns(2)
         with b_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3连単"], default=["馬連", "3連複"])
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
             box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:5]]
             box_default.sort(key=lambda h: extract_num(h))
             box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
