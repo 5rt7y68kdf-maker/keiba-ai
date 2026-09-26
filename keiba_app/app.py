@@ -6,12 +6,14 @@ import streamlit as st
 import datetime
 import pandas as pd
 import numpy as np
+import itertools
+
+# Plotlyのオプショナルインポート (Streamlit CloudでのModuleNotFoundError防止)
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
-import itertools
 
 # SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -27,10 +29,18 @@ VENUE_MAP = {
 }
 VENUE_CODE_TO_NAME = {v: k for k, v in VENUE_MAP.items()}
 
-ALL_TICKET_TYPES = ["単勝", "複勝", "枠連", "馬連", "ワイド", "馬単", "3連複", "3連単"]
+ALL_TICKET_TYPES = ["単勝", "複勝", "馬連", "ワイド", "馬単", "3連複", "3連単"]
 
 TOP_JOCKEYS_S = ["ルメール", "川田", "武豊", "坂井", "横山武", "戸崎", "モレイラ", "レーン"]
 TOP_JOCKEYS_A = ["松山", "鮫島克", "岩田望", "西村淳", "菅原明", "津村", "田辺", "デムーロ", "丹内"]
+
+def extract_num(val):
+    if not val:
+        return 0
+    if isinstance(val, int):
+        return val
+    m = re.search(r'(\d+)', str(val))
+    return int(m.group(1)) if m else 0
 
 # ---------------------------------------------------------
 # Streamlit Page Config & High-Contrast Light Clean Styling
@@ -157,7 +167,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -167,15 +177,15 @@ def parse_horse_weight_str(txt):
         elif diff_raw.startswith('+'):
             diff_str = diff_raw
             try: diff_val = int(diff_raw.replace('+', ''))
-            except: diff_val = 0
+            except ValueError: diff_val = 0
         elif diff_raw.startswith('-'):
             diff_str = diff_raw
             try: diff_val = int(diff_raw)
-            except: diff_val = 0
+            except ValueError: diff_val = 0
         else:
             diff_str = f"+{diff_raw}"
             try: diff_val = int(diff_raw)
-            except: diff_val = 0
+            except ValueError: diff_val = 0
         return f"{w_val}kg ({diff_str})", diff_val
     m2 = re.search(r'(\d{3,4})', clean_txt)
     if m2:
@@ -210,37 +220,8 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
     return races_list
 
 # ---------------------------------------------------------
-# Scraping & Data Extraction Logic
+# Scraping & Data Extraction Logic (No 枠番)
 # ---------------------------------------------------------
-
-def extract_num(val):
-    if not val:
-        return 0
-    if isinstance(val, int):
-        return val
-    m = re.search(r'(\d+)', str(val))
-    return int(m.group(1)) if m else 0
-
-def get_jra_waku(umaban, total_horses):
-    if total_horses <= 8:
-        return umaban
-    base = total_horses // 8
-    rem = total_horses % 8
-    frame_capacities = []
-    for f in range(1, 9):
-        if f > (8 - rem):
-            frame_capacities.append(base + 1)
-        else:
-            frame_capacities.append(base)
-    current_horse = 1
-    for f_idx, cap in enumerate(frame_capacities, 1):
-        if current_horse <= umaban < current_horse + cap:
-            return f_idx
-        current_horse += cap
-    return 8
-
-
-
 def parse_db_netkeiba(soup):
     table = soup.select_one('table.race_table_01')
     if not table:
@@ -254,8 +235,7 @@ def parse_db_netkeiba(soup):
     col_map = {}
     for idx, h in enumerate(headers):
         clean_h = re.sub(r'\s+', '', str(h))
-        if '枠' in clean_h: col_map['waku'] = idx
-        elif '馬番' in clean_h or '頭番' in clean_h or clean_h == '番': col_map['uma'] = idx
+        if '馬番' in clean_h or '頭番' in clean_h or clean_h == '番': col_map['uma'] = idx
         elif '馬名' in clean_h or '競走馬' in clean_h: col_map['name'] = idx
         elif '騎手' in clean_h: col_map['jockey'] = idx
         elif '斤量' in clean_h: col_map['weight'] = idx
@@ -267,7 +247,7 @@ def parse_db_netkeiba(soup):
     data_list = []
     for r in rows:
         tds = r.find_all(['td', 'th'])
-        if len(tds) < 5: continue
+        if len(tds) < 4: continue
 
         name_idx = col_map.get('name')
         if name_idx is None or name_idx >= len(tds):
@@ -285,13 +265,9 @@ def parse_db_netkeiba(soup):
         if j_idx is not None and j_idx < len(tds):
             j_a = tds[j_idx].find('a')
             jockey_name = j_a.text.strip() if j_a else tds[j_idx].text.strip()
-
-        wakaban = None
-        w_idx = col_map.get('waku')
-        if w_idx is not None and w_idx < len(tds):
-            txt = tds[w_idx].text.strip()
-            m = re.search(r'(\d+)', txt)
-            if m: wakaban = int(m.group(1))
+        else:
+            j_a = r.select_one('a[href*="/jockey/"]')
+            if j_a: jockey_name = j_a.text.strip()
 
         umaban = None
         u_idx = col_map.get('uma')
@@ -345,16 +321,11 @@ def parse_db_netkeiba(soup):
 
         data_list.append({
             "印": "・",
-            "枠番": wakaban, "馬番": umaban, "馬名": horse_name,
+            "馬番": umaban, "馬名": horse_name,
             "騎手": jockey_name, "斤量": weight_val,
             "単勝オッズ": odds_val, "人気": pop_val,
             "馬体重": hw_str, "体重増減": hw_diff
         })
-
-    total_horses = len(data_list)
-    for d in data_list:
-        if d['枠番'] is None or d['枠番'] < 1 or d['枠番'] > 8:
-            d['枠番'] = get_jra_waku(d['馬番'], total_horses)
 
     data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
     return data_list
@@ -368,42 +339,40 @@ def parse_race_netkeiba(soup):
         rows = soup.find_all('tr')
 
     data_list = []
-    for r in rows:
+    for idx, r in enumerate(rows, start=1):
         td_list = r.find_all('td')
-        if len(td_list) < 5: continue
+        if len(td_list) < 3: continue
 
         horse_a = r.select_one('a[href*="/horse/"]') or r.select_one('.HorseName a') or r.select_one('span.Horse_Name a')
         if not horse_a: continue
         horse_name = horse_a.text.strip()
-        if not horse_name: continue
+        if not horse_name or horse_name in ['馬名', '競走馬', '馬 名']: continue
 
         jockey_a = r.select_one('a[href*="/jockey/"]') or r.select_one('.Jockey a')
         jockey_name = jockey_a.text.strip() if jockey_a else "未定義"
 
-        wakaban = None
-        umaban = len(data_list) + 1
+        umaban = None
         weight_val = 55.0
         odds_val = "未確定"
         pop_val = "未確定"
         hw_str = "未計量 (発走前)"
         hw_diff = 0
 
+        r_cls = ' '.join([c.lower() for c in r.get('class', [])])
+        r_id = str(r.get('id', '')).lower()
+        m_tr_u = re.search(r'horselist_(\d+)', r_cls) or re.search(r'umaban(\d+)', r_cls) or re.search(r'tr_(\d+)', r_id) or re.search(r'horse_(\d+)', r_id)
+        if m_tr_u:
+            try: umaban = int(m_tr_u.group(1))
+            except ValueError: pass
+
         for td in td_list:
             cls_str = ' '.join([c.lower() for c in td.get('class', [])])
             text = td.text.strip()
 
-            if 'waku' in cls_str or 'waku' in (td.get('id') or '').lower():
-                m_w_cls = re.search(r'waku(\d)', cls_str)
-                if m_w_cls:
-                    wakaban = int(m_w_cls.group(1))
-                elif text.isdigit() and 1 <= int(text) <= 8:
-                    wakaban = int(text)
-
-            if 'umaban' in cls_str or 'uma' in cls_str:
-                m_u_cls = re.search(r'umaban(\d+)', cls_str)
-                if m_u_cls:
-                    umaban = int(m_u_cls.group(1))
-                elif text.isdigit() and 1 <= int(text) <= 18:
+            if umaban is None:
+                m_u = re.search(r'umaban(\d+)', cls_str)
+                if m_u: umaban = int(m_u.group(1))
+                elif ('umaban' in cls_str or 'uma' in cls_str or 'num' in cls_str or 'td_umaban' in cls_str) and text.isdigit() and 1 <= int(text) <= 18:
                     umaban = int(text)
 
             if 'kinryo' in cls_str or 'weight' in cls_str:
@@ -419,21 +388,25 @@ def parse_race_netkeiba(soup):
                 if m_p: pop_val = int(m_p.group(1))
 
             if 'weight' in cls_str or 'weight' in (td.get('id') or '').lower() or re.search(r'\d{3,4}\s*\(', text):
-                hw_str, hw_diff = parse_horse_weight_str(text)
+                p_str, p_diff = parse_horse_weight_str(text)
+                if p_str != "未計量 (発走前)":
+                    hw_str = p_str
+                    hw_diff = p_diff
+
+        if umaban is None and len(td_list) >= 2:
+            txt1 = td_list[1].text.strip()
+            if txt1.isdigit() and 1 <= int(txt1) <= 18:
+                umaban = int(txt1)
+
+        if umaban is None: umaban = idx
 
         data_list.append({
             "印": "・",
-            "枠番": wakaban, "馬番": umaban, "馬名": horse_name,
+            "馬番": umaban, "馬名": horse_name,
             "騎手": jockey_name, "斤量": weight_val,
             "単勝オッズ": odds_val, "人気": pop_val,
             "馬体重": hw_str, "体重増減": hw_diff
         })
-
-    total_horses = len(data_list)
-    for d in data_list:
-        if d['枠番'] is None or not isinstance(d['枠番'], int) or d['枠番'] < 1 or d['枠番'] > 8:
-            u = d.get('馬番', 1)
-            d['枠番'] = get_jra_waku(u, total_horses)
 
     data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
     return data_list
@@ -494,8 +467,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
     if not has_real_odds:
         for idx, d in enumerate(data_list):
             j_score = 10.0 if any(j in d['騎手'] for j in TOP_JOCKEYS_S) else (5.0 if any(j in d['騎手'] for j in TOP_JOCKEYS_A) else 0.0)
-            w_score = max(0, 10 - (d['枠番'] * 0.5))
-            est_power = 50.0 + j_score + w_score + (18 - d['馬番']) * 0.8
+            est_power = 50.0 + j_score + (18 - d['馬番']) * 0.8
             d['est_power'] = est_power
         
         sorted_by_power = sorted(data_list, key=lambda x: x.get('est_power', 50.0), reverse=True)
@@ -541,7 +513,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
         cond_bonus = 0.0
         if track_condition in ["重", "不良"]:
-            if d['枠番'] <= 3: cond_bonus += 3.0
+            if d['馬番'] <= 4: cond_bonus += 3.0
         
         pace_bonus = 0.0
         if pace_setting == "スローペース（前残り）":
@@ -550,16 +522,12 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
             if d['馬番'] >= 7: pace_bonus += 4.0
 
         tb_waku_bonus = 0.0
-        if track_bias_waku == "超内伸び (1〜3枠絶好)":
-            if d['枠番'] <= 3: tb_waku_bonus = 6.0
-            elif d['枠番'] >= 6: tb_waku_bonus = -4.0
-        elif track_bias_waku == "内有利 (1〜4枠)":
-            if d['枠番'] <= 4: tb_waku_bonus = 3.5
-        elif track_bias_waku == "外有利 (6〜8枠)":
-            if d['枠番'] >= 6: tb_waku_bonus = 3.5
-        elif track_bias_waku == "超外伸び (外枠強烈)":
-            if d['枠番'] >= 6: tb_waku_bonus = 6.0
-            elif d['枠番'] <= 3: tb_waku_bonus = -4.0
+        if "内" in track_bias_waku:
+            if d['馬番'] <= 4: tb_waku_bonus = 5.0
+            elif d['馬番'] >= 10: tb_waku_bonus = -3.0
+        elif "外" in track_bias_waku:
+            if d['馬番'] >= 10: tb_waku_bonus = 5.0
+            elif d['馬番'] <= 4: tb_waku_bonus = -3.0
 
         tb_leg_bonus = 0.0
         if track_bias_leg == "前残り絶対優位 (逃げ・先行)":
@@ -569,7 +537,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
         bias_sum = (tb_waku_bonus + tb_leg_bonus + pace_bonus + cond_bonus) * w_bias
 
-        # 穴馬ボーナス計算 (人気薄・オッズ高めで高指数)
         ana_bonus = 0.0
         if (isinstance(pop_val, int) and pop_val >= 5) or o_val >= 10.0:
             ana_bonus = min(15.0, (o_val * 0.4) + (pop_val * 0.8)) * w_ana
@@ -579,7 +546,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         total_score = base_score + j_bonus + w_bonus + p_bonus + bias_sum + ana_bonus + ped_bonus
         d['AI指数'] = round(total_score, 1)
 
-        # 個性評価用データ (レーダーチャート用)
         d['sub_speed'] = round(min(100.0, max(20.0, base_score + 10.0)), 1)
         d['sub_jockey'] = round(min(100.0, max(20.0, 50.0 + j_bonus * 5.0)), 1)
         d['sub_paddock'] = round(min(100.0, max(20.0, 50.0 + p_bonus * 4.0 + w_bonus * 5.0)), 1)
@@ -596,7 +562,6 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
     sorted_indices = sorted(range(len(data_list)), key=lambda i: data_list[i]['AI指数'], reverse=True)
     
-    # 激走穴馬候補の検出 (人気5位以下 or オッズ10倍以上の中で最高AI指数の馬)
     ana_candidate_idx = None
     best_ana_score = -999.0
     for i in range(len(data_list)):
@@ -663,6 +628,7 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
         w_weight=w_weight,
         w_ana=w_ana
     )
+    data_list.sort(key=lambda x: x['馬番'] if isinstance(x['馬番'], int) else 99)
     return data_list, None
 
 # ---------------------------------------------------------
@@ -768,8 +734,8 @@ st.markdown('<div class="step-header">Step 2 🌦 トラックバイアス（馬
 tb_col1, tb_col2 = st.columns(2)
 with tb_col1:
     track_bias_waku = st.selectbox(
-        "🏟️ トラックバイアス【枠順・内外】",
-        ["フラット", "内有利 (1〜4枠)", "超内伸び (1〜3枠絶好)", "外有利 (6〜8枠)", "超外伸び (外枠強烈)"],
+        "🏟️ トラックバイアス【内外・馬番】",
+        ["フラット", "内有利 (1〜4番絶好)", "外有利 (10番以降伸びる)"],
         index=0
     )
     track_cond = st.selectbox("🌦 馬場状態", ["良", "稍重", "重", "不良"], index=0)
@@ -829,14 +795,14 @@ if err:
     st.error(err)
 elif data_list:
     df = pd.DataFrame(data_list)
-    cols_order = ["印", "枠番", "馬番", "馬名", "AI指数", "勝率予測", "単勝オッズ", "人気", "騎手", "斤量", "馬体重", "体重増減"]
+    cols_order = ["印", "馬番", "馬名", "AI指数", "勝率予測", "単勝オッズ", "人気", "騎手", "斤量", "馬体重", "体重増減"]
     df = df[[c for c in cols_order if c in df.columns]]
 
     st.success(f"✅ {len(data_list)}頭のデータ（AI印・馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[2] if len(data_list)>2 else data_list[0])
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
     ana_horse = next((d for d in data_list if '穴' in d['印']), None)
 
     # 上位評価カード (4カラム構成: 本命・対抗・単穴・激走穴馬)
@@ -929,8 +895,8 @@ elif data_list:
                             match_h.get('sub_bias', 50.0),
                             match_h.get('sub_overall', 50.0)
                         ]
-                        vals_closed = vals + [vals[0]]
-                        cats_closed = categories + [categories[0]]
+                        vals_closed = vals + [vals]
+                        cats_closed = categories + [categories]
                         
                         fig_radar.add_trace(go.Scatterpolar(
                             r=vals_closed,
@@ -940,7 +906,7 @@ elif data_list:
                         ))
                 
                 fig_radar.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                    polar=dict(radialaxis=dict(visible=True, range=)),
                     showlegend=True,
                     margin=dict(l=40, r=40, t=30, b=30),
                     height=380
@@ -968,7 +934,7 @@ elif data_list:
         return ''
 
     # 小数点第一位で統一フォーマット表示
-    fmt_dict = {c: (lambda x: f"{float(x):.1f}" if isinstance(x, (int, float, np.number)) and not pd.isna(x) else str(x)) for c in ["AI指数", "勝率予測", "単勝オッズ", "斤量"] if c in df.columns}
+    fmt_dict = {c: "{:.1f}" for c in ["AI指数", "勝率予測", "単勝オッズ", "斤量"] if c in df.columns}
     st.dataframe(df.style.map(highlight_marks, subset=['印']).format(fmt_dict), use_container_width=True)
     
     csv_data = df.to_csv(index=False, encoding='utf-8-sig')
@@ -981,7 +947,7 @@ elif data_list:
     )
 
     # =========================================================
-    # 【Step 4】 本格馬券 複数選択 & 自動組番計算 (マルチ対応)
+    # 【Step 4】 本格馬券 複数選択 & 自動組番計算 (マルチ対応 & 広範カバー)
     # =========================================================
     st.markdown('<div class="step-header">Step 4 🎰 券種複数選択 & 🔀 マルチ機能対応 自動組番展開</div>', unsafe_allow_html=True)
     
@@ -992,6 +958,9 @@ elif data_list:
     )
 
     budget = st.number_input("💰 総購入予算 (円)", min_value=1000, value=10000, step=1000)
+
+    # AI指数の高い順にソートしたデータリストを用意
+    sorted_by_ai = sorted(data_list, key=lambda x: x.get('AI指数', 0), reverse=True)
 
     # 1. 基本モード (複数券種選択可能)
     if strat_mode == "基本（AI推奨軸）":
@@ -1018,7 +987,7 @@ elif data_list:
             **💰 1点あたりの推奨投入額:** `{alloc_per_ticket:,} 円`（均等資金配分）
             """)
 
-    # 2. 🎯 流しモード (マルチ対応 & 複数券種対応)
+    # 2. 🎯 流しモード (マルチ対応 & 広範カバー)
     elif strat_mode == "🎯 流し（軸固定・マルチ対応）":
         f_col1, f_col2 = st.columns(2)
         with f_col1:
@@ -1033,7 +1002,7 @@ elif data_list:
             else:
                 aite_limit = 3
 
-            aite_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[1:aite_limit]]
+            aite_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[1:aite_limit]]
             if ana_horse and f"{ana_horse['馬番']}番 {ana_horse['馬名']} ({ana_horse['印']})" not in aite_default:
                 aite_default.append(f"{ana_horse['馬番']}番 {ana_horse['馬名']} ({ana_horse['印']})")
 
@@ -1063,34 +1032,34 @@ elif data_list:
                                     combos.append(f"{a} ➔ {j_no}")
                 elif t_type == "3連複":
                     if len(j_nos) == 1:
-                        j_no = j_nos[0]
+                        j_no = j_nos
                         for p in itertools.combinations(a_nos, 2):
                             if j_no not in p:
-                                c_s = sorted([j_no, p[0], p[1]])
-                                combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
+                                c_s = sorted([j_no, p, p])
+                                combos.append(f"{c_s} - {c_s} - {c_s}")
                     elif len(j_nos) == 2:
                         for a in a_nos:
                             if a not in j_nos:
-                                c_s = sorted([j_nos[0], j_nos[1], a])
-                                combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
+                                c_s = sorted([j_nos, j_nos, a])
+                                combos.append(f"{c_s} - {c_s} - {c_s}")
                 elif t_type == "3連単":
                     if len(j_nos) == 1:
-                        j_no = j_nos[0]
+                        j_no = j_nos
                         for p in itertools.permutations(a_nos, 2):
                             if j_no not in p:
                                 if is_multi:
-                                    for perm in itertools.permutations([j_no, p[0], p[1]], 3):
-                                        combos.append(f"{perm[0]} ➔ {perm[1]} ➔ {perm[2]}")
+                                    for perm in itertools.permutations([j_no, p, p], 3):
+                                        combos.append(f"{perm} ➔ {perm} ➔ {perm}")
                                 else:
-                                    combos.append(f"{j_no} ➔ {p[0]} ➔ {p[1]}")
+                                    combos.append(f"{j_no} ➔ {p} ➔ {p}")
                     elif len(j_nos) == 2:
                         for a in a_nos:
                             if a not in j_nos:
                                 if is_multi:
-                                    for perm in itertools.permutations([j_nos[0], j_nos[1], a], 3):
-                                        combos.append(f"{perm[0]} ➔ {perm[1]} ➔ {perm[2]}")
+                                    for perm in itertools.permutations([j_nos, j_nos, a], 3):
+                                        combos.append(f"{perm} ➔ {perm} ➔ {perm}")
                                 else:
-                                    combos.append(f"{j_nos[0]} ➔ {j_nos[1]} ➔ {a}")
+                                    combos.append(f"{j_nos} ➔ {j_nos} ➔ {a}")
 
                 combos = sorted(list(dict.fromkeys(combos)))
                 pts = len(combos)
@@ -1107,8 +1076,8 @@ elif data_list:
     elif strat_mode == "🎲 ボックス（対象馬全選択）":
         b_col1, b_col2 = st.columns(2)
         with b_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
-            box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:5]]
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3连複"])
+            box_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:5]]
             box_horses = st.multiselect("🎲 ボックス対象馬", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=box_default)
 
         with b_col2:
@@ -1123,14 +1092,14 @@ elif data_list:
                         combos.append(f"{min(p)} - {max(p)}")
                 elif t_type == "馬単":
                     for p in itertools.permutations(b_nos, 2):
-                        combos.append(f"{p[0]} ➔ {p[1]}")
+                        combos.append(f"{p} ➔ {p}")
                 elif t_type == "3連複":
                     for p in itertools.combinations(b_nos, 3):
                         c_s = sorted(p)
-                        combos.append(f"{c_s[0]} - {c_s[1]} - {c_s[2]}")
+                        combos.append(f"{c_s} - {c_s} - {c_s}")
                 elif t_type == "3連単":
                     for p in itertools.permutations(b_nos, 3):
-                        combos.append(f"{p[0]} ➔ {p[1]} ➔ {p[2]}")
+                        combos.append(f"{p} ➔ {p} ➔ {p}")
 
                 pts = len(combos)
                 total_points += pts
@@ -1147,9 +1116,9 @@ elif data_list:
         with fmt_col1:
             selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["3連複", "3連単", "馬連", "馬単"], default=["3連複", "3連単"])
             
-            f1_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:1]]
-            f2_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:3]]
-            f3_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[:7]]
+            f1_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:1]]
+            f2_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:3]]
+            f3_def = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in sorted_by_ai[:7]]
 
             f1_h = st.multiselect("1頭目 / 1着候補", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f1_def)
             f2_h = st.multiselect("2頭目 / 2着候補", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=f2_def)
@@ -1177,7 +1146,7 @@ elif data_list:
                                 pair = tuple(sorted([a, b]))
                                 if pair not in seen:
                                     seen.add(pair)
-                                    combos.append(f"{pair[0]} - {pair[1]}")
+                                    combos.append(f"{pair} - {pair}")
                 elif t_type == "3連単":
                     for a in n1:
                         for b in n2:
@@ -1193,7 +1162,7 @@ elif data_list:
                                     trio = tuple(sorted([a, b, c]))
                                     if trio not in seen:
                                         seen.add(trio)
-                                        combos.append(f"{trio[0]} - {trio[1]} - {trio[2]}")
+                                        combos.append(f"{trio} - {trio} - {trio}")
 
                 pts = len(combos)
                 total_points += pts
