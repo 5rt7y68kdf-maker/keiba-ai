@@ -200,16 +200,16 @@ def clean_text(el):
     return re.sub(r'\s+', ' ', el.text).strip()
 
 def generate_static_schedule(is_sunday, year='2026'):
-    day_code = '0409' if is_sunday else '0408'
+    day_code = '0410' if is_sunday else '0409'
     venues = [('中山', '06'), ('中京', '07'), ('阪神', '09')]
     races = []
     for v_name, v_code in venues:
         for r_num in range(1, 13):
             r_id = f"{year}{v_code}{day_code}{r_num:02d}"
             if v_code == '06' and r_num == 11:
-                r_name = "スプリンターズS (G1)" if is_sunday else "オールカマー (G2)"
+                r_name = "スプリンターズS (G1)" if is_sunday else "ながつきS"
             elif v_code in ['07', '09'] and r_num == 11:
-                r_name = "ポートアイランドS" if is_sunday else "神戸新聞杯 (G2)"
+                r_name = "ポートアイランドS" if is_sunday else "シリウスS (G3)"
             else:
                 r_name = f"第{r_num}レース"
             races.append({
