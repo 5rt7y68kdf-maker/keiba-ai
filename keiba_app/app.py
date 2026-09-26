@@ -592,7 +592,11 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
     for idx, d in enumerate(data_list):
         o_val = d.get('numeric_odds', 15.0)
-        pop_val = d.get('人気', 10)
+        raw_pop = d.get('人気', 10)
+        try:
+            pop_val = float(raw_pop)
+        except (ValueError, TypeError):
+            pop_val = 10.0
         base_score = max(5.0, 100.0 - (o_val * 3.5))
 
         jockey = d['騎手']
@@ -672,9 +676,13 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
     ana_candidate_idx = None
     best_ana_score = -999.0
     for i in range(len(data_list)):
-        pop = data_list[i].get('人気', 1)
+        raw_p = data_list[i].get('人気', 1)
+        try:
+            pop = float(raw_p)
+        except (ValueError, TypeError):
+            pop = 10.0
         odds = data_list[i].get('numeric_odds', 1.0)
-        if (isinstance(pop, int) and pop >= 5) or odds >= 10.0:
+        if pop >= 5 or odds >= 10.0:
             if data_list[i]['AI指数'] > best_ana_score:
                 best_ana_score = data_list[i]['AI指数']
                 ana_candidate_idx = i
