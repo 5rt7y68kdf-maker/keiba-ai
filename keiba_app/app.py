@@ -167,7 +167,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -220,7 +220,7 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
     return races_list
 
 # ---------------------------------------------------------
-# Scraping & Data Extraction Logic (重複完全排除 & 馬番昇順保証)
+# Scraping & Data Extraction Logic (No 枠番)
 # ---------------------------------------------------------
 def parse_db_netkeiba(soup):
     main_table = soup.select_one('table.race_table_01') or soup.select_one('table[class*="race_table"]') or soup.select_one('table.Shutuba_Table')
@@ -839,9 +839,9 @@ elif data_list:
 
     st.success(f"✅ {len(data_list)}頭のデータ（AI印・馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[2] if len(data_list)>2 else data_list[0])
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
     ana_horse = next((d for d in data_list if '穴' in d['印']), None)
 
     # 上位評価カード (4カラム構成: 本命・対抗・単穴・激走穴馬)
