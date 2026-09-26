@@ -220,7 +220,7 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
     return races_list
 
 # ---------------------------------------------------------
-# Scraping & Data Extraction Logic (厳密馬番セル抽出 v58)
+# Scraping & Data Extraction Logic (厳密馬番セル抽出 v59)
 # ---------------------------------------------------------
 def parse_db_netkeiba(soup):
     main_table = soup.select_one('table.race_table_01') or soup.select_one('table[class*="race_table"]') or soup.select_one('table.Shutuba_Table')
@@ -282,10 +282,11 @@ def parse_db_netkeiba(soup):
 
         if umaban is None and len(tds) >= 3:
             for c_i in [0, 1, 2]:
-                txt = tds[c_i].text.strip()
-                if txt.isdigit() and 1 <= int(txt) <= 18:
-                    umaban = int(txt)
-                    break
+                if c_i < len(tds):
+                    txt = tds[c_i].text.strip()
+                    if txt.isdigit() and 1 <= int(txt) <= 18:
+                        umaban = int(txt)
+                        break
 
         if umaban is None:
             umaban = len(data_list) + 1
@@ -836,9 +837,9 @@ elif data_list:
 
     st.success(f"✅ {len(data_list)}頭のデータ（AI印・馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[2] if len(data_list)>2 else data_list[0])
     ana_horse = next((d for d in data_list if '穴' in d['印']), None)
 
     # 上位評価カード (4カラム構成: 本命・対抗・単穴・激走穴馬)
@@ -931,8 +932,8 @@ elif data_list:
                             match_h.get('sub_bias', 50.0),
                             match_h.get('sub_overall', 50.0)
                         ]
-                        vals_closed = vals + [vals]
-                        cats_closed = categories + [categories]
+                        vals_closed = vals + [vals[0]]
+                        cats_closed = categories + [categories[0]]
                         
                         fig_radar.add_trace(go.Scatterpolar(
                             r=vals_closed,
@@ -942,7 +943,7 @@ elif data_list:
                         ))
                 
                 fig_radar.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=)),
+                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
                     showlegend=True,
                     margin=dict(l=40, r=40, t=30, b=30),
                     height=380
@@ -1027,7 +1028,7 @@ elif data_list:
     elif strat_mode == "🎯 流し（軸固定・マルチ対応）":
         f_col1, f_col2 = st.columns(2)
         with f_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3连単"], default=["馬連", "3連複"])
             jiku_horses = st.multiselect("📌 軸馬 (1頭または2頭)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=[f"{honmei['馬番']}番 {honmei['馬名']} ({honmei['印']})"])
             
             range_mode = st.radio("🎯 相手馬の自動選択範囲", ["🔥 広めカバー (上位7頭)", "⚖️ 標準 (上位4頭)", "🎯 精鋭 (上位2頭)"], horizontal=True)
