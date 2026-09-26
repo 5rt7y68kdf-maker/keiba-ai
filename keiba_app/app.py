@@ -6,12 +6,14 @@ import streamlit as st
 import datetime
 import pandas as pd
 import numpy as np
+import itertools
+
+# Plotlyのオプショナルインポート (Streamlit CloudでのModuleNotFoundError防止)
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
-import itertools
 
 # SSL証明書警告の非表示化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -157,7 +159,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -208,6 +210,25 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
             'v_code': v_code
         })
     return races_list
+
+# JRA規格公式枠番計算ロジック
+def get_jra_waku(umaban, total_horses):
+    if total_horses <= 8:
+        return umaban
+    base = total_horses // 8
+    rem = total_horses % 8
+    frame_capacities = []
+    for f in range(1, 9):
+        if f > (8 - rem):
+            frame_capacities.append(base + 1)
+        else:
+            frame_capacities.append(base)
+    current_horse = 1
+    for f_idx, cap in enumerate(frame_capacities, 1):
+        if current_horse <= umaban < current_horse + cap:
+            return f_idx
+        current_horse += cap
+    return 8
 
 # ---------------------------------------------------------
 # Scraping & Data Extraction Logic
@@ -273,6 +294,12 @@ def parse_race_netkeiba(soup):
             "単勝オッズ": odds_val, "人気": pop_val,
             "馬体重": hw_str, "体重増減": hw_diff
         })
+
+    # 全出走頭数からJRA標準ルールで枠番(1〜8枠)を正確に算出設定
+    total_horses = len(data_list)
+    for d in data_list:
+        u = d.get('馬番', 1)
+        d['枠番'] = get_jra_waku(u, total_horses)
 
     return data_list
 
@@ -407,7 +434,7 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
 
         bias_sum = (tb_waku_bonus + tb_leg_bonus + pace_bonus + cond_bonus) * w_bias
 
-        # 穴馬ボーナス計算 (人気薄・オッズ高めで高指数)
+        # 穴馬ボーナス計算 (人気薄・オッズ高目で高指数)
         ana_bonus = 0.0
         if (isinstance(pop_val, int) and pop_val >= 5) or o_val >= 10.0:
             ana_bonus = min(15.0, (o_val * 0.4) + (pop_val * 0.8)) * w_ana
@@ -854,7 +881,7 @@ elif data_list:
     elif strat_mode == "🎯 流し（軸固定・マルチ対応）":
         f_col1, f_col2 = st.columns(2)
         with f_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3连単"], default=["馬連", "3連複"])
             jiku_horses = st.multiselect("📌 軸馬 (1頭または2頭)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=[f"{honmei['馬番']}番 {honmei['馬名']} ({honmei['印']})"])
             
             aite_default = [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list[1:5]]
