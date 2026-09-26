@@ -167,7 +167,7 @@ def parse_horse_weight_str(txt):
     if not clean_txt or clean_txt in ['--', '計不', '前計不']:
         return "未計量 (発走前)", 0
     clean_txt = re.sub(r'\s+', '', clean_txt)
-    m = re.search(r'(\d{3,4})\s*\\(([^)]+)\\)', clean_txt)
+    m = re.search(r'(\d{3,4})\s*\(([^)]+)\)', clean_txt)
     if m:
         w_val = m.group(1)
         diff_raw = m.group(2).replace('前', '')
@@ -220,7 +220,7 @@ def generate_jra_race_ids_loop(year, venue_name, kai, nichi):
     return races_list
 
 # ---------------------------------------------------------
-# Scraping & Data Extraction Logic (厳密馬番セル抽出 v59)
+# Scraping & Data Extraction Logic (No 枠番)
 # ---------------------------------------------------------
 def parse_db_netkeiba(soup):
     main_table = soup.select_one('table.race_table_01') or soup.select_one('table[class*="race_table"]') or soup.select_one('table.Shutuba_Table')
@@ -281,12 +281,11 @@ def parse_db_netkeiba(soup):
                 umaban = int(m.group(1))
 
         if umaban is None and len(tds) >= 3:
-            for c_i in [0, 1, 2]:
-                if c_i < len(tds):
-                    txt = tds[c_i].text.strip()
-                    if txt.isdigit() and 1 <= int(txt) <= 18:
-                        umaban = int(txt)
-                        break
+            for c_i in [2, 1]:
+                txt = tds[c_i].text.strip()
+                if txt.isdigit() and 1 <= int(txt) <= 18:
+                    umaban = int(txt)
+                    break
 
         if umaban is None:
             umaban = len(data_list) + 1
@@ -394,12 +393,11 @@ def parse_race_netkeiba(soup):
                 umaban = int(m_r.group(1))
 
         if umaban is None and len(td_list) >= 2:
-            for c_i in [0, 1, 2]:
-                if c_i < len(td_list):
-                    txt = td_list[c_i].text.strip()
-                    if txt.isdigit() and 1 <= int(txt) <= 18:
-                        umaban = int(txt)
-                        break
+            for c_i in [1, 0]:
+                txt = td_list[c_i].text.strip()
+                if txt.isdigit() and 1 <= int(txt) <= 18:
+                    umaban = int(txt)
+                    break
 
         if umaban is None:
             umaban = idx
@@ -478,7 +476,7 @@ def generate_ai_analysis_comment(honmei, taikou, tanana, ana_horse, track_cond, 
     w_eval = "好調な馬体重を維持。" if honmei['体重増減'] in range(-4, 5) else "当日の気配に注目。"
     
     bias_desc = f"トラックバイアス（{track_bias_waku}・{track_bias_leg}）"
-    comment_parts.append(f"**【本命 ◎ {honmei['馬番']}番 {honmei['馬名']}】**\nAI指数**{honmei['AI指数']}**で最上位評価。{j_eval}{w_eval} 天候【{weather_setting}】・{track_cond}馬場、{pace_setting}および{bias_desc}の好条件が揃い、軸としての信頼度は極めて高いです。")
+    comment_parts.append(f"**【本命 ◎ {honmei['馬番']}番 {honmei['馬名']}】**\nAI指数**{honmei['AI指数']}**で最上位評価。{j_eval}{w_eval} {track_cond}馬場、{pace_setting}および{bias_desc}の好条件が揃い、軸としての信頼度は極めて高いです。")
     comment_parts.append(f"**【対抗 ◯ {taikou['馬番']}番 {taikou['馬名']} & 単穴 ▲ {tanana['馬番']}番 {tanana['馬名']}】**\n対抗の{taikou['馬名']}（{taikou['騎手']}）は勝率予測{taikou['勝率予測']}%で高次元で安定。単穴の{tanana['馬名']}は展開バイアスが向けば頭まで狙える一押しの穴馬です。")
     if ana_horse:
         comment_parts.append(f"**【🔥 激走穴馬 🔥 {ana_horse['馬番']}番 {ana_horse['馬名']}】**\n単勝{ana_horse['単勝オッズ']}倍（{ana_horse['人気']}人気）ながら、トラックバイアス補正とAI評価により高期待値を検出！高配当狙いの紐・穴軸に最適です。")
@@ -540,9 +538,8 @@ def calculate_ai_scores(data_list, paddock_status_map=None, track_condition="良
         p_bonus *= w_paddock
 
         cond_bonus = 0.0
-        if track_condition in ["重", "不良"] or weather_setting in ["雨", "小雨", "雪"]:
-            if d['馬番'] <= 6:
-                cond_bonus += 3.0
+        if track_condition in ["重", "不良"]:
+            if d['馬番'] <= 4: cond_bonus += 3.0
         
         pace_bonus = 0.0
         if pace_setting == "スローペース（前残り）":
@@ -651,7 +648,6 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
         pace_setting=pace_setting,
         track_bias_waku=track_bias_waku,
         track_bias_leg=track_bias_leg,
-        weather_setting=weather_setting,
         w_jockey=w_jockey,
         w_paddock=w_paddock,
         w_bias=w_bias,
@@ -759,7 +755,7 @@ target_race_id = st.session_state.get('active_race_id', '202606040811')
 # =========================================================
 # 【Step 2】 トラックバイアス & レース環境 & カスタム調整スライダー
 # =========================================================
-st.markdown('<div class="step-header">Step 2 🌦 トラックバイアス（馬場傾向）・☀️ 天候 & 🤖 AI予想カスタム調整</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-header">Step 2 🌦 トラックバイアス（馬場傾向）& 🤖 AI予想カスタム調整</div>', unsafe_allow_html=True)
 
 tb_col1, tb_col2 = st.columns(2)
 with tb_col1:
@@ -837,9 +833,9 @@ elif data_list:
 
     st.success(f"✅ {len(data_list)}頭のデータ（AI印・馬名・騎手・斤量・馬体重・単勝オッズ・人気）を取得完了しました。")
 
-    honmei = next((d for d in data_list if d['印'] == '◎'), data_list[0])
-    taikou = next((d for d in data_list if d['印'] == '◯'), data_list[1] if len(data_list)>1 else data_list[0])
-    tanana = next((d for d in data_list if d['印'] == '▲'), data_list[2] if len(data_list)>2 else data_list[0])
+    honmei = next((d for d in data_list if d['印'] == '◎'), data_list)
+    taikou = next((d for d in data_list if d['印'] == '◯'), data_list if len(data_list)>1 else data_list)
+    tanana = next((d for d in data_list if d['印'] == '▲'), data_list if len(data_list)>2 else data_list)
     ana_horse = next((d for d in data_list if '穴' in d['印']), None)
 
     # 上位評価カード (4カラム構成: 本命・対抗・単穴・激走穴馬)
@@ -932,8 +928,8 @@ elif data_list:
                             match_h.get('sub_bias', 50.0),
                             match_h.get('sub_overall', 50.0)
                         ]
-                        vals_closed = vals + [vals[0]]
-                        cats_closed = categories + [categories[0]]
+                        vals_closed = vals + [vals]
+                        cats_closed = categories + [categories]
                         
                         fig_radar.add_trace(go.Scatterpolar(
                             r=vals_closed,
@@ -1028,7 +1024,7 @@ elif data_list:
     elif strat_mode == "🎯 流し（軸固定・マルチ対応）":
         f_col1, f_col2 = st.columns(2)
         with f_col1:
-            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3连単"], default=["馬連", "3連複"])
+            selected_tickets = st.multiselect("🎫 購入券種（複数選択可能）", ["馬連", "ワイド", "馬単", "3連複", "3連単"], default=["馬連", "3連複"])
             jiku_horses = st.multiselect("📌 軸馬 (1頭または2頭)", [f"{d['馬番']}番 {d['馬名']} ({d['印']})" for d in data_list], default=[f"{honmei['馬番']}番 {honmei['馬名']} ({honmei['印']})"])
             
             range_mode = st.radio("🎯 相手馬の自動選択範囲", ["🔥 広めカバー (上位7頭)", "⚖️ 標準 (上位4頭)", "🎯 精鋭 (上位2頭)"], horizontal=True)
