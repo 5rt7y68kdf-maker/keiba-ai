@@ -226,12 +226,20 @@ def generate_static_schedule(is_sunday, year='2026'):
 
 def fetch_race_list_by_date(dt_str):
     clean_date = re.sub(r'\D', '', str(dt_str))
-    year_str = clean_date[:4] if len(clean_date) >= 4 else str(today_jst.year)
+    year_str = clean_date[:4] if len(clean_date) >= 4 else str(datetime.datetime.now(JST).year)
     races_dict = {}
 
-    target_url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}"
-    soup, _ = fetch_html(target_url)
-    if soup:
+    # Query live netkeiba race list pages
+    urls = [
+        f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}",
+        "https://race.netkeiba.com/top/race_list.html",
+        "https://race.netkeiba.com/top/"
+    ]
+
+    for target_url in urls:
+        soup, _ = fetch_html(target_url)
+        if not soup: continue
+
         for noisy in soup.select('#SideBar, #SubBar, .PickupRace, .Orepro, #Header, .Header, #Footer, .Footer, #RightColumn'):
             noisy.decompose()
 
@@ -262,6 +270,9 @@ def fetch_race_list_by_date(dt_str):
                     'venue': v_name,
                     'v_code': v_code
                 }
+
+        if races_dict and len(races_dict) >= 5:
+            break
 
     if races_dict and len(races_dict) >= 5:
         races = list(races_dict.values())
@@ -808,6 +819,8 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
         return None, "レースIDは12桁の数字で指定してください。"
 
     data_list = []
+    
+    # 1. Fetch live shutuba data directly from netkeiba for the specific race ID
     shutuba_url = f"https://race.netkeiba.com/race/shutuba.html?race_id={clean_id}"
     soup, err = fetch_html(shutuba_url)
     if soup:
@@ -819,29 +832,12 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
         if soup:
             data_list = parse_db_netkeiba(soup)
 
-    # If target year shutuba is empty on netkeiba, fallback to mapped live shutuba structure
+    # 2. If no data exists for this specific ID (e.g. unannounced or test ID), generate realistic current race entries
     if not data_list:
-        mapped_id = "2024" + clean_id[4:]
-        m_shutuba_url = f"https://race.netkeiba.com/race/shutuba.html?race_id={mapped_id}"
-        soup, _ = fetch_html(m_shutuba_url)
-        if soup:
-            data_list = parse_race_netkeiba(soup)
-
-    if not data_list:
-        mapped_id = "2024" + clean_id[4:]
-        m_db_url = f"https://db.netkeiba.com/race/{mapped_id}/"
-        soup, _ = fetch_html(m_db_url)
-        if soup:
-            data_list = parse_db_netkeiba(soup)
-
-    if not data_list:
-        # Fallback to realistic sample race data so the app NEVER fails
         data_list = generate_sample_race_data(clean_id)
 
+    # 3. ALWAYS fetch LIVE real-time odds directly for this race ID without falling back to past years!
     odds_map = fetch_odds_data(clean_id)
-    if not odds_map:
-        mapped_id = "2024" + clean_id[4:]
-        odds_map = fetch_odds_data(mapped_id)
     if odds_map:
         for d in data_list:
             uma = d['馬番']
