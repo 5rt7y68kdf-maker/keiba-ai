@@ -199,7 +199,7 @@ def clean_text(el):
     if not el: return ""
     return re.sub(r'\s+', ' ', el.text).strip()
 
-def generate_static_schedule(is_sunday, year='2024'):
+def generate_static_schedule(is_sunday, year='2026'):
     day_code = '0409' if is_sunday else '0408'
     venues = [('中山', '06'), ('中京', '07'), ('阪神', '09')]
     races = []
@@ -223,6 +223,7 @@ def generate_static_schedule(is_sunday, year='2024'):
 
 def fetch_race_list_by_date(dt_str):
     clean_date = re.sub(r'\D', '', str(dt_str))
+    year_str = clean_date[:4] if len(clean_date) >= 4 else str(today_jst.year)
     races_dict = {}
 
     target_url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={clean_date}"
@@ -270,7 +271,7 @@ def fetch_race_list_by_date(dt_str):
     except Exception:
         is_sunday = clean_date.endswith('27') or clean_date.endswith('29')
 
-    races = generate_static_schedule(is_sunday)
+    races = generate_static_schedule(is_sunday, year=year_str)
     return races, None
 
 def parse_db_netkeiba(soup):
@@ -701,10 +702,28 @@ def get_race_data_by_id(clean_id, paddock_map=None, track_condition="良", pace_
         if soup:
             data_list = parse_db_netkeiba(soup)
 
+    # If target year shutuba is empty on netkeiba, fallback to mapped live shutuba structure
+    if not data_list:
+        mapped_id = "2024" + clean_id[4:]
+        m_shutuba_url = f"https://race.netkeiba.com/race/shutuba.html?race_id={mapped_id}"
+        soup, _ = fetch_html(m_shutuba_url)
+        if soup:
+            data_list = parse_race_netkeiba(soup)
+
+    if not data_list:
+        mapped_id = "2024" + clean_id[4:]
+        m_db_url = f"https://db.netkeiba.com/race/{mapped_id}/"
+        soup, _ = fetch_html(m_db_url)
+        if soup:
+            data_list = parse_db_netkeiba(soup)
+
     if not data_list:
         return None, f"指定されたレースID ({clean_id}) の出馬表データを取得できませんでした。"
 
     odds_map = fetch_odds_data(clean_id)
+    if not odds_map:
+        mapped_id = "2024" + clean_id[4:]
+        odds_map = fetch_odds_data(mapped_id)
     if odds_map:
         for d in data_list:
             uma = d['馬番']
